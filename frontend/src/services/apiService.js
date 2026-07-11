@@ -138,23 +138,45 @@ export const api = {
 
   uploadDocument: async (file, category, requestId) => {
     const safeRequestId = (requestId && !requestId.startsWith('550e8400')) ? requestId : undefined;
-    const token = localStorage.getItem('accessToken');
-    const userId = (() => { try { return JSON.parse(atob(token.split('.')[1])).id; } catch { return 'unknown'; } })();
+    const fileName = file.name || `${category}_doc.pdf`;
     
     try {
-      // Step 1: Upload file directly to Supabase Storage
-      const { uploadToStorage } = await import('./supabase.js');
-      const result = await uploadToStorage(file, category, userId);
+      // Step 1: Request signed upload URL from backend
+      const urlResponse = await fetch(
+        `${BACKEND_URL}/documents/upload-url?fileName=${encodeURIComponent(fileName)}&category=${encodeURIComponent(category)}`,
+        {
+          headers: getHeaders()
+        }
+      );
       
-      // Step 2: Confirm upload to backend (save metadata in DB)
+      if (!urlResponse.ok) {
+        throw new Error('Failed to get signed upload URL from backend');
+      }
+      
+      const { signedUrl, storagePath } = await urlResponse.json();
+      
+      // Step 2: Upload file directly to Supabase Storage using the signed URL
+      const uploadResponse = await fetch(signedUrl, {
+        method: 'PUT',
+        body: file,
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream'
+        }
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error('Failed to upload file to storage bucket');
+      }
+      
+      // Step 3: Confirm upload with backend
       const response = await fetch(`${BACKEND_URL}/documents/confirm`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
-          storagePath: result.path,
-          fileName: result.name || file.name,
+          storagePath,
+          fileName,
           category: category.toUpperCase().replace(/\s+/g, '_'),
-          size: `${((result.size || file.size || 0) / (1024 * 1024)).toFixed(1)} MB`,
+          size: file.size ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : '1.0 MB',
           requestId: safeRequestId
         })
       });
@@ -167,13 +189,13 @@ export const api = {
       const uploadData = await response.json();
       return { success: true, document: uploadData.data };
     } catch (storageErr) {
-      console.warn('Supabase Storage upload failed, falling back to metadata-only:', storageErr);
+      console.warn('Supabase Storage signed upload failed, falling back to metadata-only:', storageErr);
       // Fallback: metadata-only upload
       const response = await fetch(`${BACKEND_URL}/documents/upload`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
-          name: file.name || `${category}_doc.pdf`,
+          name: fileName,
           category: category.toUpperCase().replace(/\s+/g, '_'),
           size: file.size ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : '1.5 MB',
           requestId: safeRequestId
