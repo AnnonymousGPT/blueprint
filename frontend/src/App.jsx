@@ -60,6 +60,12 @@ export default function App() {
           const profile = await api.getMe();
           if (profile) {
             setUser(profile);
+            const res = await api.getRequests().catch(() => null);
+            if (res && res.success && res.requests) {
+              setRequests(res.requests);
+              const allDocs = res.requests.flatMap(r => r.documents || []);
+              setDocuments(allDocs);
+            }
           }
         } catch (err) {
           console.error('Failed to restore session:', err);
@@ -104,22 +110,10 @@ export default function App() {
       if (user && !isOffline) {
         try {
           const res = await api.getRequests();
-          if (res.success && res.requests && res.requests.length > 0) {
-            setRequests(prev => {
-              // Only update status and progress to preserve local timeline UI if mock differs
-              const newRequests = [...prev];
-              res.requests.forEach(fetchedReq => {
-                const idx = newRequests.findIndex(r => r.id === fetchedReq.id);
-                if (idx !== -1) {
-                  newRequests[idx] = { 
-                    ...newRequests[idx], 
-                    status: fetchedReq.status,
-                    progress: fetchedReq.progress
-                  };
-                }
-              });
-              return newRequests;
-            });
+          if (res.success && res.requests) {
+            setRequests(res.requests);
+            const allDocs = res.requests.flatMap(r => r.documents || []);
+            setDocuments(allDocs);
           }
         } catch (e) {
           console.warn('Silent polling fail:', e);
@@ -150,6 +144,8 @@ export default function App() {
       const requestsRes = await api.getRequests().catch(() => ({ requests: [] }));
       if (requestsRes && requestsRes.requests) {
         setRequests(requestsRes.requests);
+        const allDocs = requestsRes.requests.flatMap(r => r.documents || []);
+        setDocuments(allDocs);
       }
     } catch (e) {
       console.warn('Initial data load error:', e);
