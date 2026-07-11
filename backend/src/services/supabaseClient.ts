@@ -3,14 +3,18 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+// Fallback to placeholder values if env variables are not yet configured on Render dashboard
+const cleanUrl = supabaseUrl || 'https://placeholder-project-id.supabase.co';
+const cleanKey = supabaseServiceKey || 'placeholder-anon-key-that-prevents-boot-crash';
+
+export const supabase = createClient(cleanUrl, cleanKey, {
   auth: { persistSession: false }
 });
 
 // Auto-create storage bucket on module load
 (async () => {
   if (!supabaseUrl || !supabaseServiceKey) {
-    console.warn('[Supabase] URL or Service Key not set — Storage disabled');
+    console.warn('[Supabase] URL or Service Key not set in Render environment. Storage features will fail at runtime.');
     return;
   }
   try {
