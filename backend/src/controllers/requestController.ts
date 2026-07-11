@@ -51,7 +51,7 @@ export const createRequest = async (req: AuthenticatedRequest, res: Response) =>
     return res.status(201).json({ success: true, data: request });
   } catch (error: any) {
     console.error('createRequest failed:', error?.message);
-    return res.status(500).json({ error: 'Failed to create request', detail: error?.message, stack: error?.stack });
+    return res.status(500).json({ error: 'Failed to create request', detail: error?.message });
   }
 };
 
