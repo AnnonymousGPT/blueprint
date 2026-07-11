@@ -37,7 +37,7 @@ export const verifyOtp = async (req: Request, res: Response) => {
     }
     otpStore.delete(phone);
 
-    let user = await prisma.user.findUnique({ where: { phone }, include: { expert: true } });
+    let user = await prisma.user.findUnique({ where: { phone }, include: { expert: true } as any });
     if (!user) {
       // Direct redirection to signup onboarding form
       return res.status(200).json({ success: true, onboardingRequired: true, phone });
@@ -65,7 +65,7 @@ export const register = async (req: Request, res: Response) => {
     // Upsert: if user already exists (by phone or email), return them with a fresh token
     const existingUser = await prisma.user.findFirst({
       where: { OR: [{ phone }, ...(email ? [{ email }] : [])] },
-      include: { expert: true }
+      include: { expert: true } as any
     });
     if (existingUser) {
       const token = jwt.sign({ id: existingUser.id, role: existingUser.role }, JWT_ACCESS_SECRET, { expiresIn: '7d' });
@@ -86,8 +86,8 @@ export const register = async (req: Request, res: Response) => {
             casesDone: 0
           }
         } : undefined
-      },
-      include: { expert: true }
+      } as any,
+      include: { expert: true } as any
     });
 
     const token = jwt.sign({ id: user.id, role: user.role }, JWT_ACCESS_SECRET, { expiresIn: '7d' });
@@ -108,7 +108,7 @@ export const getMe = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      include: { expert: true }
+      include: { expert: true } as any
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     return res.status(200).json({ success: true, user });
@@ -129,7 +129,7 @@ export const getExperts = async (_req: Request, res: Response) => {
       photo: "https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=256", // placeholder
       specialization: e.specialization,
       experience: "10 Years Exp", // placeholder if not in DB
-      rating: e.user.rating || 4.5,
+      rating: (e.user as any).rating || 4.5,
       reviews: e.reviewsCount,
       fees: e.fees
     }));

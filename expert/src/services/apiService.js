@@ -84,6 +84,13 @@ export const api = {
     });
   },
 
+  updateDocumentStatus: async (token, docId, status, reason) => {
+    return await fetchWithAuth(`/api/documents/${docId}`, token, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, reason })
+    });
+  },
+
   getMessages: async (token, otherUserId) => {
     return await fetchWithAuth(`/api/messages/${otherUserId}`, token);
   },

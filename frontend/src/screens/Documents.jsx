@@ -11,7 +11,7 @@ const categories = [
   { key: 'Biz', label: 'Biz', match: 'Business Documents' }
 ];
 
-export default function Documents({ documents, onUploadSuccess, addNotification, setActiveTab }) {
+export default function Documents({ documents, onUploadSuccess, addNotification, setActiveTab, requests }) {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -25,6 +25,53 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
   const [capturedPhotoUrl, setCapturedPhotoUrl] = useState(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // Native Permission flows
+  const [cameraPermission, setCameraPermission] = useState(() => {
+    return localStorage.getItem('cameraPermissionState') || null;
+  });
+  const [filesPermission, setFilesPermission] = useState(() => {
+    return localStorage.getItem('filesPermissionState') || null;
+  });
+
+  const triggerCameraScan = (category) => {
+    setUploadCategory(category);
+    if (cameraPermission === 'granted') {
+      setShowCamera(true);
+    } else if (cameraPermission === 'denied') {
+      addNotification('Camera access is denied. Reset permissions in App Settings.', 'error');
+    } else {
+      setCameraPermission('prompting');
+    }
+  };
+
+  const triggerFilePick = (category) => {
+    setUploadCategory(category);
+    if (filesPermission === 'denied') {
+      addNotification('Files/Storage access is denied. Reset permissions in App Settings.', 'error');
+      return;
+    }
+    // Trigger real file picker
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleRealFileSelected = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStagedFile({
+      realFile: file,
+      name: file.name,
+      category: uploadCategory,
+      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+    });
+    setFilesPermission('granted');
+    localStorage.setItem('filesPermissionState', 'granted');
+    addNotification(`${file.name} selected! Confirm to upload.`, 'success');
+  };
 
   useEffect(() => {
     if (showCamera) {
@@ -149,14 +196,31 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
   const confirmStagedUpload = async () => {
     if (!stagedFile) return;
     setUploading(true);
-    addNotification('Uploading document to vault...', 'info');
+    addNotification('Uploading to secure vault...', 'info');
+
+    const reqId = (requests && requests.length > 0) ? requests[0].id : (localStorage.getItem('activeRequestId') || undefined);
+
     try {
-      const res = await api.uploadDocument({ name: stagedFile.name }, stagedFile.category);
+      // Use the real file if available, otherwise create a minimal metadata object
+      const fileToUpload = stagedFile.realFile || { name: stagedFile.name, size: 0 };
+      const res = await api.uploadDocument(fileToUpload, stagedFile.category, reqId);
+      
       onUploadSuccess(res.document);
       setStagedFile(null);
-      addNotification(`${stagedFile.category} uploaded successfully!`, 'success');
+      addNotification(`${stagedFile.category} uploaded successfully! ✅`, 'success');
+      
+      // Auto-notify expert
+      const expertId = (requests && requests.length > 0) ? (requests[0].expertId || requests[0].userId) : null;
+      if (expertId) {
+        try {
+          await api.sendMessage(expertId, `📄 Client uploaded: ${stagedFile.category} (${stagedFile.name}) to secure vault.`);
+        } catch (chatErr) {
+          console.log('Silent skip chat auto-msg:', chatErr);
+        }
+      }
     } catch (err) {
-      addNotification(err.message, 'error');
+      console.error('Upload failed:', err);
+      addNotification(`Upload failed: ${err.message}. Please try again.`, 'error');
     } finally {
       setUploading(false);
     }
@@ -257,6 +321,14 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
         position: 'relative'
       }}
     >
+      {/* Hidden real file input for device file picker */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,.pdf,.doc,.docx"
+        style={{ display: 'none' }}
+        onChange={handleRealFileSelected}
+      />
       {/* Top Header Row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
         {/* Back Button */}
@@ -318,6 +390,85 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
           Vault
         </div>
       </div>
+
+      {/* Native Permission Dialog Simulation */}
+      {cameraPermission === 'prompting' && (
+        <div style={styles.permOverlay}>
+          <div className="card animate-scale-in" style={styles.permCard}>
+            <div style={styles.permIcon}>📷</div>
+            <h3 style={styles.permTitle}>Allow Blueprint to take pictures and record video?</h3>
+            <div style={styles.permButtonCol}>
+              <button 
+                onClick={() => {
+                  setCameraPermission('granted');
+                  localStorage.setItem('cameraPermissionState', 'granted');
+                  setShowCamera(true);
+                }} 
+                style={styles.permBtn}
+              >
+                While using the app
+              </button>
+              <button 
+                onClick={() => {
+                  setCameraPermission('granted');
+                  localStorage.setItem('cameraPermissionState', 'granted');
+                  setShowCamera(true);
+                }} 
+                style={styles.permBtn}
+              >
+                Only this time
+              </button>
+              <button 
+                onClick={() => {
+                  setCameraPermission('denied');
+                  localStorage.setItem('cameraPermissionState', 'denied');
+                  addNotification('Camera access denied. Permission blocked.', 'error');
+                }} 
+                style={{ ...styles.permBtn, borderBottom: 'none' }}
+              >
+                Don't allow
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {filesPermission === 'prompting' && (
+        <div style={styles.permOverlay}>
+          <div className="card animate-scale-in" style={styles.permCard}>
+            <div style={styles.permIcon}>📁</div>
+            <h3 style={styles.permTitle}>Allow Blueprint to access photos, media, and files on your device?</h3>
+            <div style={styles.permButtonCol}>
+              <button 
+                onClick={() => {
+                  setFilesPermission('granted');
+                  localStorage.setItem('filesPermissionState', 'granted');
+                  const fakeName = `${uploadCategory}_Upload_${Math.floor(100 + Math.random() * 900)}.pdf`;
+                  setStagedFile({
+                    name: fakeName,
+                    category: uploadCategory,
+                    size: `${(1 + Math.random() * 4).toFixed(1)} MB`
+                  });
+                  addNotification('Files access granted!', 'success');
+                }} 
+                style={styles.permBtn}
+              >
+                Allow Access
+              </button>
+              <button 
+                onClick={() => {
+                  setFilesPermission('denied');
+                  localStorage.setItem('filesPermissionState', 'denied');
+                  addNotification('Files/Storage access denied.', 'error');
+                }} 
+                style={{ ...styles.permBtn, borderBottom: 'none' }}
+              >
+                Don't allow
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Interactive Camera Mockup Viewport */}
       {showCamera && (
@@ -443,17 +594,32 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
                 </button>
                 <button 
                   onClick={() => {
-                    const fakeName = `Camera_Capture_${uploadCategory}_${Math.floor(100 + Math.random() * 900)}.jpg`;
+                    // Convert captured photo dataURL to real Blob for upload
+                    let realFile = null;
+                    if (capturedPhotoUrl) {
+                      try {
+                        const byteString = atob(capturedPhotoUrl.split(',')[1]);
+                        const mimeString = capturedPhotoUrl.split(',')[0].split(':')[1].split(';')[0];
+                        const ab = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(ab);
+                        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+                        realFile = new File([ab], `Camera_${uploadCategory}_${Date.now()}.jpg`, { type: mimeString });
+                      } catch (err) {
+                        console.warn('Blob conversion failed:', err);
+                      }
+                    }
+                    const displayName = realFile?.name || `Camera_Capture_${uploadCategory}_${Math.floor(100 + Math.random() * 900)}.jpg`;
                     setStagedFile({
-                      name: fakeName,
+                      realFile: realFile,
+                      name: displayName,
                       category: uploadCategory,
-                      size: '1.2 MB',
+                      size: realFile ? `${(realFile.size / (1024 * 1024)).toFixed(1)} MB` : '1.2 MB',
                       previewUrl: capturedPhotoUrl
                     });
                     setShowCamera(false);
                     setCameraCapturedImage(false);
                     setCapturedPhotoUrl(null);
-                    addNotification('Photo captured successfully! Confirm upload now.', 'success');
+                    addNotification('Photo captured! Confirm upload now.', 'success');
                   }}
                   className="btn btn-primary"
                   style={{ flex: 1, padding: '10px', fontSize: '0.8rem', borderRadius: '10px', backgroundColor: 'var(--success)', color: 'white' }}
@@ -511,7 +677,7 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
             <button 
               onClick={() => {
                 setShowUploadOptions(false);
-                setShowCamera(true);
+                triggerCameraScan(uploadCategory);
               }}
               className="btn btn-secondary"
               style={{ padding: '14px', fontSize: '0.85rem', display: 'flex', gap: '10px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '12px' }}
@@ -522,13 +688,7 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
             <button 
               onClick={() => {
                 setShowUploadOptions(false);
-                const fakeName = `${uploadCategory}_Upload_${Math.floor(100 + Math.random() * 900)}.pdf`;
-                setStagedFile({
-                  name: fakeName,
-                  category: uploadCategory,
-                  size: `${(1 + Math.random() * 4).toFixed(1)} MB`
-                });
-                addNotification('File selected from browse history!', 'info');
+                triggerFilePick(uploadCategory);
               }}
               className="btn btn-secondary"
               style={{ padding: '14px', fontSize: '0.85rem', display: 'flex', gap: '10px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '12px' }}
@@ -1144,8 +1304,7 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
                       </span>
                       <button 
                         onClick={() => {
-                          setUploadCategory(item.category);
-                          setShowCamera(true);
+                          triggerCameraScan(item.category);
                         }}
                         style={{
                           border: '1.5px solid var(--error)',
@@ -1354,3 +1513,69 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
     </div>
   );
 }
+
+const styles = {
+  permOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 1000,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px'
+  },
+  permCard: {
+    width: '100%',
+    maxWidth: '290px',
+    backgroundColor: '#FFFFFF',
+    borderRadius: '24px',
+    padding: '24px 20px',
+    boxShadow: '0 12px 30px rgba(0,0,0,0.25)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    textAlign: 'center',
+    border: 'none'
+  },
+  permIcon: {
+    width: '48px',
+    height: '48px',
+    borderRadius: '50%',
+    backgroundColor: '#EFF6FF',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '1.4rem',
+    marginBottom: '16px'
+  },
+  permTitle: {
+    fontSize: '0.94rem',
+    fontWeight: 700,
+    color: '#1A1A2E',
+    margin: '0 0 20px 0',
+    lineHeight: 1.4
+  },
+  permButtonCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    width: '100%',
+    borderRadius: '16px',
+    border: '1.5px solid #F1F3F4',
+    overflow: 'hidden'
+  },
+  permBtn: {
+    padding: '14px',
+    fontSize: '0.82rem',
+    fontWeight: 700,
+    color: '#0D9488',
+    width: '100%',
+    textAlign: 'center',
+    borderBottom: '1.5px solid #F1F3F4',
+    backgroundColor: '#FFFFFF',
+    cursor: 'pointer'
+  }
+};

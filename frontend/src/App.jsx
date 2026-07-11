@@ -349,6 +349,7 @@ export default function App() {
       case 'documents':
         return (
           <Documents 
+            requests={simulateEmptyState ? [] : requests}
             documents={simulateEmptyState ? [] : documents}
             onUploadSuccess={handleUploadSuccess}
             addNotification={addNotification}

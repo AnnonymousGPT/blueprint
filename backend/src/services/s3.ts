@@ -1,77 +1,30 @@
-import AWS from 'aws-sdk';
+import { supabase } from './supabaseClient';
 
-const s3Bucket = process.env.S3_BUCKET_NAME || 'blueprint-advisor-docs';
-const s3Region = process.env.AWS_REGION || 'us-east-1';
+const BUCKET = 'documents';
 
-// Setup S3 Client config
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: s3Region,
-  signatureVersion: 'v4'
-});
-
-export const getUploadPresignedUrl = async (key: string, fileType: string): Promise<{ url: string; uploadKey: string }> => {
-  const params = {
-    Bucket: s3Bucket,
-    Key: key,
-    Expires: 600, // 10 minutes
-    ContentType: fileType,
-    ACL: 'private'
-  };
-
-  try {
-    // Mock URL for local test
-    if (!process.env.AWS_ACCESS_KEY_ID) {
-      return {
-        url: `http://localhost:5000/mock-upload/${key}`,
-        uploadKey: key
-      };
-    }
-
-    const url = await s3.getSignedUrlPromise('putObject', params);
-    return { url, uploadKey: key };
-  } catch (error) {
-    console.error('Failed to generate upload signed URL:', error);
-    throw new Error('Storage provider upload setup failed.');
-  }
+export const uploadFileToStorage = async (filePath: string, fileBuffer: Buffer, contentType: string) => {
+  const { data, error } = await supabase.storage.from(BUCKET).upload(filePath, fileBuffer, {
+    contentType,
+    upsert: true
+  });
+  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+  return data.path;
 };
 
-export const getDownloadPresignedUrl = async (key: string): Promise<string> => {
-  const params = {
-    Bucket: s3Bucket,
-    Key: key,
-    Expires: 3600 // 1 hour
-  };
-
-  try {
-    if (!process.env.AWS_ACCESS_KEY_ID) {
-      return `http://localhost:5000/mock-download/${key}`;
-    }
-
-    const url = await s3.getSignedUrlPromise('getObject', params);
-    return url;
-  } catch (error) {
-    console.error('Failed to generate download signed URL:', error);
-    throw new Error('Storage provider download retrieval failed.');
-  }
+export const getSignedDownloadUrl = async (filePath: string, expiresIn = 3600): Promise<string> => {
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(filePath, expiresIn);
+  if (error) throw new Error(`Signed URL failed: ${error.message}`);
+  return data.signedUrl;
 };
 
-export const deleteS3Object = async (key: string): Promise<void> => {
-  const params = {
-    Bucket: s3Bucket,
-    Key: key
-  };
-
-  try {
-    if (!process.env.AWS_ACCESS_KEY_ID) {
-      console.log(`[Mock Storage] Deleted object with key: ${key}`);
-      return;
-    }
-
-    await s3.deleteObject(params).promise();
-  } catch (error) {
-    console.error('Failed to delete S3 object:', error);
-    throw new Error('Storage provider object deletion failed.');
-  }
+export const deleteFileFromStorage = async (filePath: string): Promise<void> => {
+  const { error } = await supabase.storage.from(BUCKET).remove([filePath]);
+  if (error) throw new Error(`Delete failed: ${error.message}`);
 };
+
+// Legacy exports for backward compatibility
+export const getUploadPresignedUrl = async (key: string, _fileType: string) => {
+  return { url: `supabase-storage://${BUCKET}/${key}`, uploadKey: key };
+};
+export const getDownloadPresignedUrl = getSignedDownloadUrl;
+export const deleteS3Object = deleteFileFromStorage;

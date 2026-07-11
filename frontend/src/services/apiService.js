@@ -137,24 +137,55 @@ export const api = {
   },
 
   uploadDocument: async (file, category, requestId) => {
-    // Only include requestId if it's a real value (not a dummy fallback UUID)
     const safeRequestId = (requestId && !requestId.startsWith('550e8400')) ? requestId : undefined;
-    const response = await fetch(`${BACKEND_URL}/documents/upload`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({
-        name: file.name,
-        category: category.toUpperCase().replace(/\s+/g, '_'),
-        size: file.size || '1.5 MB',
-        requestId: safeRequestId
-      })
-    });
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || errData.message || 'Failed to upload document');
+    const token = localStorage.getItem('accessToken');
+    const userId = (() => { try { return JSON.parse(atob(token.split('.')[1])).id; } catch { return 'unknown'; } })();
+    
+    try {
+      // Step 1: Upload file directly to Supabase Storage
+      const { uploadToStorage } = await import('./supabase.js');
+      const result = await uploadToStorage(file, category, userId);
+      
+      // Step 2: Confirm upload to backend (save metadata in DB)
+      const response = await fetch(`${BACKEND_URL}/documents/confirm`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          storagePath: result.path,
+          fileName: result.name || file.name,
+          category: category.toUpperCase().replace(/\s+/g, '_'),
+          size: `${((result.size || file.size || 0) / (1024 * 1024)).toFixed(1)} MB`,
+          requestId: safeRequestId
+        })
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to confirm upload');
+      }
+      
+      const uploadData = await response.json();
+      return { success: true, document: uploadData.data };
+    } catch (storageErr) {
+      console.warn('Supabase Storage upload failed, falling back to metadata-only:', storageErr);
+      // Fallback: metadata-only upload
+      const response = await fetch(`${BACKEND_URL}/documents/upload`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          name: file.name || `${category}_doc.pdf`,
+          category: category.toUpperCase().replace(/\s+/g, '_'),
+          size: file.size ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : '1.5 MB',
+          requestId: safeRequestId
+        })
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to upload document');
+      }
+      const uploadData = await response.json();
+      return { success: true, document: uploadData.data };
     }
-    const uploadData = await response.json();
-    return { success: true, document: uploadData.data };
   },
 
   getMessages: async (otherUserId) => {

@@ -13,8 +13,8 @@ export const createRequest = async (req: AuthenticatedRequest, res: Response) =>
         serviceName,
         assignedExpertId: assignedExpertId || null,
         amount: amount || 1499,
-        status: assignedExpertId ? 'EXPERT_ASSIGNED' : 'NEW',
-      }
+        status: (assignedExpertId ? 'EXPERT_ASSIGNED' : 'NEW') as any,
+      } as any
     });
     return res.status(201).json({ success: true, data: request });
   } catch (error) {
@@ -32,11 +32,11 @@ export const getRequests = async (req: AuthenticatedRequest, res: Response) => {
         assignedExpert: {
           include: {
             expert: true
-          }
+          } as any
         }, 
         documents: true, 
         bookings: true 
-      },
+      } as any,
       orderBy: { createdAt: 'desc' }
     });
     return res.status(200).json({ success: true, data: requests });

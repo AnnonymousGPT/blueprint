@@ -13,7 +13,7 @@ export const createBooking = async (req: AuthenticatedRequest, res: Response) =>
         type: type || 'VIDEO',
         userId: req.user!.id,
         expertId
-      }
+      } as any
     });
     return res.status(201).json({ success: true, data: booking });
   } catch (error) {
