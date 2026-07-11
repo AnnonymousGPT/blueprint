@@ -432,6 +432,49 @@ export default function App() {
     );
   }
 
+  // Native Platform Bypass for Play Store builds
+  if (Capacitor.isNativePlatform()) {
+    return (
+      <div className="native-app-container">
+        {/* Dynamic Float Notification Layer */}
+        <div className="notification-container">
+          {notifications.map((notif) => (
+            <Notification
+              key={notif.id}
+              message={notif.message}
+              type={notif.type}
+              onClose={() => removeNotification(notif.id)}
+            />
+          ))}
+        </div>
+
+        {/* Main interactive screen viewport */}
+        <div className="app-content" style={{ height: '100vh', width: '100vw', borderRadius: 0, border: 'none', boxShadow: 'none' }}>
+          {(forceShowLogin || (paymentData && !user)) ? (
+            <Login 
+              onLoginSuccess={(userData) => {
+                handleLoginSuccess(userData);
+                setForceShowLogin(false);
+              }} 
+              addNotification={addNotification} 
+              onCancel={() => {
+                setForceShowLogin(false);
+                setPaymentData(null);
+              }}
+            />
+          ) : (
+            renderAppScreen()
+          )}
+        </div>
+
+        {/* Bottom Tab Bar */}
+        {!forceShowLogin && !activeWizardConfig && !bookingData && !paymentData && (
+          <BottomBar activeTab={activeTab} setActiveTab={setActiveTab} />
+        )}
+      </div>
+    );
+  }
+
   // Outer Wrapper displaying Android Simulator & controls on desktop
   return (
     <div className="desktop-wrapper">

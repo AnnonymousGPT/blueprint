@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
 import './App.css';
 import './index.css';
 import StatusBar from './components/StatusBar';
@@ -107,6 +108,27 @@ function App() {
           />
         )}
         {renderScreen()}
+      </div>
+    );
+  }
+
+  // Native Platform Bypass for Play Store builds
+  if (Capacitor.isNativePlatform()) {
+    return (
+      <div className="native-app-container" style={{ height: '100vh', width: '100vw', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-app)' }}>
+        {notification && (
+          <Notification 
+            message={notification.message} 
+            type={notification.type} 
+            onClose={() => setNotification(null)} 
+          />
+        )}
+        <div className="screen-container" style={{ flex: 1, overflowY: 'auto' }}>
+          {renderScreen()}
+        </div>
+        {token && (
+          <BottomBar activeTab={currentScreen} onNavigate={onNavigate} style={{ position: 'static' }} />
+        )}
       </div>
     );
   }
