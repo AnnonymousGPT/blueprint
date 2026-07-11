@@ -24,23 +24,42 @@ export const createRequest = async (req: AuthenticatedRequest, res: Response) =>
 
 export const getRequests = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const whereClause = req.user!.role === 'EXPERT' ? { assignedExpertId: req.user!.id } : { userId: req.user!.id };
+    let whereClause: any = { userId: req.user!.id };
+    
+    if (req.user!.role === 'EXPERT') {
+      const expert = await prisma.expert.findUnique({
+        where: { userId: req.user!.id }
+      });
+      if (!expert) {
+        return res.status(200).json({ success: true, data: [] });
+      }
+      whereClause = { assignedExpertId: expert.id };
+    }
+
     const requests = await prisma.serviceRequest.findMany({
       where: whereClause,
       include: { 
-        client: true, 
+        user: true, 
         assignedExpert: {
           include: {
-            expert: true
-          } as any
+            user: true
+          }
         }, 
         documents: true, 
         bookings: true 
-      } as any,
+      },
       orderBy: { createdAt: 'desc' }
     });
-    return res.status(200).json({ success: true, data: requests });
-  } catch (error) {
+
+    // Map user relation to client for frontend backward compatibility
+    const formatted = requests.map((r: any) => ({
+      ...r,
+      client: r.user
+    }));
+
+    return res.status(200).json({ success: true, data: formatted });
+  } catch (error: any) {
+    console.error('getRequests failed:', error?.message);
     return res.status(500).json({ error: 'Failed to get requests' });
   }
 };
