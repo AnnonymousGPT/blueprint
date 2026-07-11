@@ -27,7 +27,16 @@ export const getRequests = async (req: AuthenticatedRequest, res: Response) => {
     const whereClause = req.user!.role === 'EXPERT' ? { assignedExpertId: req.user!.id } : { userId: req.user!.id };
     const requests = await prisma.serviceRequest.findMany({
       where: whereClause,
-      include: { client: true, assignedExpert: true, documents: true, bookings: true },
+      include: { 
+        client: true, 
+        assignedExpert: {
+          include: {
+            expert: true
+          }
+        }, 
+        documents: true, 
+        bookings: true 
+      },
       orderBy: { createdAt: 'desc' }
     });
     return res.status(200).json({ success: true, data: requests });
