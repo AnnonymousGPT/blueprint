@@ -24,7 +24,11 @@ const allowedOrigins = [
   'http://localhost',
   'capacitor://localhost',
   'http://172.16.2.42:5173',
-  'http://172.16.2.42:5000'
+  'http://172.16.2.42:5000',
+  // Production
+  'https://blueprint-backend.onrender.com',
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+  ...(process.env.EXPERT_URL ? [process.env.EXPERT_URL] : []),
 ];
 
 app.use(cors({
