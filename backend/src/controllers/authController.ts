@@ -62,9 +62,14 @@ export const register = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid role selected.' });
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { phone } });
+    // Upsert: if user already exists (by phone or email), return them with a fresh token
+    const existingUser = await prisma.user.findFirst({
+      where: { OR: [{ phone }, ...(email ? [{ email }] : [])] },
+      include: { expert: true }
+    });
     if (existingUser) {
-      return res.status(400).json({ error: 'User already exists.' });
+      const token = jwt.sign({ id: existingUser.id, role: existingUser.role }, JWT_ACCESS_SECRET, { expiresIn: '7d' });
+      return res.status(200).json({ success: true, token, user: existingUser });
     }
 
     const user = await prisma.user.create({
