@@ -27,32 +27,13 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Native Permission flows
-  const [cameraPermission, setCameraPermission] = useState(() => {
-    return localStorage.getItem('cameraPermissionState') || null;
-  });
-  const [filesPermission, setFilesPermission] = useState(() => {
-    return localStorage.getItem('filesPermissionState') || null;
-  });
-
   const triggerCameraScan = (category) => {
     setUploadCategory(category);
-    if (cameraPermission === 'granted') {
-      setShowCamera(true);
-    } else if (cameraPermission === 'denied') {
-      addNotification('Camera access is denied. Reset permissions in App Settings.', 'error');
-    } else {
-      setCameraPermission('prompting');
-    }
+    setShowCamera(true);
   };
 
   const triggerFilePick = (category) => {
     setUploadCategory(category);
-    if (filesPermission === 'denied') {
-      addNotification('Files/Storage access is denied. Reset permissions in App Settings.', 'error');
-      return;
-    }
-    // Trigger real file picker
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
       fileInputRef.current.click();
@@ -68,8 +49,6 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
       category: uploadCategory,
       size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
     });
-    setFilesPermission('granted');
-    localStorage.setItem('filesPermissionState', 'granted');
     addNotification(`${file.name} selected! Confirm to upload.`, 'success');
   };
 
@@ -84,7 +63,7 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
         })
         .catch(err => {
           console.error('Error accessing camera:', err);
-          addNotification('Camera access denied or unavailable. Using simulated capture.', 'warning');
+          addNotification('Camera access failed. Please select a file from your device.', 'error');
         });
     } else {
       if (streamRef.current) {
@@ -391,84 +370,7 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
         </div>
       </div>
 
-      {/* Native Permission Dialog Simulation */}
-      {cameraPermission === 'prompting' && (
-        <div style={styles.permOverlay}>
-          <div className="card animate-scale-in" style={styles.permCard}>
-            <div style={styles.permIcon}>📷</div>
-            <h3 style={styles.permTitle}>Allow Blueprint to take pictures and record video?</h3>
-            <div style={styles.permButtonCol}>
-              <button 
-                onClick={() => {
-                  setCameraPermission('granted');
-                  localStorage.setItem('cameraPermissionState', 'granted');
-                  setShowCamera(true);
-                }} 
-                style={styles.permBtn}
-              >
-                While using the app
-              </button>
-              <button 
-                onClick={() => {
-                  setCameraPermission('granted');
-                  localStorage.setItem('cameraPermissionState', 'granted');
-                  setShowCamera(true);
-                }} 
-                style={styles.permBtn}
-              >
-                Only this time
-              </button>
-              <button 
-                onClick={() => {
-                  setCameraPermission('denied');
-                  localStorage.setItem('cameraPermissionState', 'denied');
-                  addNotification('Camera access denied. Permission blocked.', 'error');
-                }} 
-                style={{ ...styles.permBtn, borderBottom: 'none' }}
-              >
-                Don't allow
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {filesPermission === 'prompting' && (
-        <div style={styles.permOverlay}>
-          <div className="card animate-scale-in" style={styles.permCard}>
-            <div style={styles.permIcon}>📁</div>
-            <h3 style={styles.permTitle}>Allow Blueprint to access photos, media, and files on your device?</h3>
-            <div style={styles.permButtonCol}>
-              <button 
-                onClick={() => {
-                  setFilesPermission('granted');
-                  localStorage.setItem('filesPermissionState', 'granted');
-                  const fakeName = `${uploadCategory}_Upload_${Math.floor(100 + Math.random() * 900)}.pdf`;
-                  setStagedFile({
-                    name: fakeName,
-                    category: uploadCategory,
-                    size: `${(1 + Math.random() * 4).toFixed(1)} MB`
-                  });
-                  addNotification('Files access granted!', 'success');
-                }} 
-                style={styles.permBtn}
-              >
-                Allow Access
-              </button>
-              <button 
-                onClick={() => {
-                  setFilesPermission('denied');
-                  localStorage.setItem('filesPermissionState', 'denied');
-                  addNotification('Files/Storage access denied.', 'error');
-                }} 
-                style={{ ...styles.permBtn, borderBottom: 'none' }}
-              >
-                Don't allow
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Permission handling is native on Capacitor mobile platform */}
 
       {/* Interactive Camera Mockup Viewport */}
       {showCamera && (
@@ -682,7 +584,7 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
               className="btn btn-secondary"
               style={{ padding: '14px', fontSize: '0.85rem', display: 'flex', gap: '10px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '12px' }}
             >
-              <span>📷</span> <strong>Capture Photo</strong> (Native Camera Simulation)
+              <span>📷</span> <strong>Take Photo / Scan</strong>
             </button>
 
             <button 
@@ -693,7 +595,7 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
               className="btn btn-secondary"
               style={{ padding: '14px', fontSize: '0.85rem', display: 'flex', gap: '10px', justifyContent: 'flex-start', border: '1px solid var(--border-color)', borderRadius: '12px' }}
             >
-              <span>📁</span> <strong>Pick from device</strong> (File System)
+              <span>📁</span> <strong>Upload Document / PDF</strong>
             </button>
           </div>
         </div>
