@@ -4,7 +4,7 @@
   "description": "TypeScript Express API server for Blueprint Advisor CA portal",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc --skipLibCheck",
+    "build": "prisma generate && tsc --skipLibCheck",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "prisma:generate": "prisma generate",
