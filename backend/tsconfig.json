@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "es2022",
-    "module": "commonjs",
+    "module": "CommonJS",
     "lib": ["es2022"],
     "allowJs": true,
     "outDir": "./dist",
@@ -22,6 +22,8 @@
       "*": ["node_modules/*", "src/*"]
     },
     "ignoreDeprecations": "5.0",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
