@@ -142,12 +142,20 @@ export default function App() {
   };
 
   // State Triggers
-  const handleLoginSuccess = (userData) => {
+  const handleLoginSuccess = async (userData) => {
     setLoading(true);
-    setTimeout(() => {
+    try {
       setUser(userData);
+      // Fetch initial requests and documents for the user to sync UI
+      const requestsRes = await api.getRequests().catch(() => ({ requests: [] }));
+      if (requestsRes && requestsRes.requests) {
+        setRequests(requestsRes.requests);
+      }
+    } catch (e) {
+      console.warn('Initial data load error:', e);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const handleLogout = () => {

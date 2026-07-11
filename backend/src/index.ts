@@ -22,6 +22,7 @@ const allowedOrigins = [
   'http://localhost:41117',
   'http://localhost:41177',
   'http://localhost',
+  'https://localhost', // Android WebView origin
   'capacitor://localhost',
   'http://172.16.2.42:5173',
   'http://172.16.2.42:5000',

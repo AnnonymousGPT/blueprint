@@ -157,6 +157,10 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
       console.log('Supabase Auth Event:', event, session?.user?.email);
       if (session?.user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !oauthHandled) {
         oauthHandled = true;
+                // Store token immediately from Supabase session
+        if (session.access_token) {
+          localStorage.setItem('accessToken', session.access_token);
+        }
         
         // Close browser on native (after OAuth redirect)
         if (Capacitor.isNativePlatform()) {
@@ -172,7 +176,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             role: 'CLIENT'
           });
           
-          // Ensure token is stored
+          // Re-verify token storage fallback
           if (res.token || res.accessToken) {
             localStorage.setItem('accessToken', res.token || res.accessToken);
           }
@@ -183,6 +187,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
           setErrorMsg(err.message);
           addNotification?.(err.message, 'error');
           oauthHandled = false; // allow retry on error
+
           setLoading(false);
         }
       }
@@ -211,6 +216,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             const refreshToken = params.get('refresh_token');
 
             if (accessToken && refreshToken) {
+              localStorage.setItem('accessToken', accessToken);
               const { error: setSessionError } = await supabase.auth.setSession({
                 access_token: accessToken,
                 refresh_token: refreshToken
