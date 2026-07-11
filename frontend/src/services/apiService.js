@@ -137,17 +137,22 @@ export const api = {
   },
 
   uploadDocument: async (file, category, requestId) => {
+    // Only include requestId if it's a real value (not a dummy fallback UUID)
+    const safeRequestId = (requestId && !requestId.startsWith('550e8400')) ? requestId : undefined;
     const response = await fetch(`${BACKEND_URL}/documents/upload`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
         name: file.name,
-        category: category.toUpperCase().replace(' ', '_'),
-        size: '1.5 MB',
-        requestId
+        category: category.toUpperCase().replace(/\s+/g, '_'),
+        size: file.size || '1.5 MB',
+        requestId: safeRequestId
       })
     });
-    if (!response.ok) throw new Error('Failed to upload document');
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || errData.message || 'Failed to upload document');
+    }
     const uploadData = await response.json();
     return { success: true, document: uploadData.data };
   },
