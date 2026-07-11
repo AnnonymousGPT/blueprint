@@ -21,6 +21,7 @@
     "paths": {
       "*": ["node_modules/*", "src/*"]
     },
+    "ignoreDeprecations": "5.0",
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
