@@ -155,11 +155,15 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     // Listen for Supabase OAuth callbacks — handle SIGNED_IN & INITIAL_SESSION to make sure sessions are captured
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Supabase Auth Event:', event, session?.user?.email);
-      if (session?.user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !oauthHandled) {
+      
+      // Ensure we have a valid authenticated user object and session session properties
+      if (session?.user && session?.user?.email && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !oauthHandled) {
         oauthHandled = true;
-                // Store token immediately from Supabase session
-        if (session.access_token) {
-          localStorage.setItem('accessToken', session.access_token);
+        
+        // Store token immediately from Supabase session using all possible variations
+        const actualToken = session.access_token || session.accessToken || (session as any)?.access_token;
+        if (actualToken) {
+          localStorage.setItem('accessToken', actualToken);
         }
         
         // Close browser on native (after OAuth redirect)
@@ -170,7 +174,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
         setErrorMsg('');
         try {
           const res = await api.register({
-            phone: session.user.phone || session.user.email || 'Google-User',
+            phone: session.user.phone || session.user.email || `google-${session.user.id}`,
             name: session.user.user_metadata?.full_name || 'Google User',
             email: session.user.email,
             role: 'CLIENT'
@@ -187,7 +191,6 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
           setErrorMsg(err.message);
           addNotification?.(err.message, 'error');
           oauthHandled = false; // allow retry on error
-
           setLoading(false);
         }
       }
