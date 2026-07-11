@@ -28,8 +28,9 @@ function App() {
       if (token) {
         try {
           const res = await api.getMe(token);
-          if (res.data?.role === 'EXPERT') {
-            setUser(res.data);
+          const userData = res.user || res.data;
+          if (userData?.role === 'EXPERT') {
+            setUser(userData);
           } else {
             handleLogout();
           }

@@ -161,7 +161,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
         oauthHandled = true;
         
         // Store token immediately from Supabase session using all possible variations
-        const actualToken = session.access_token || session.accessToken || (session as any)?.access_token;
+        const actualToken = session?.access_token || session?.accessToken;
         if (actualToken) {
           localStorage.setItem('accessToken', actualToken);
         }
@@ -198,7 +198,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
 
     // Handle deep link callback from OAuth on Android
     let appUrlListener;
-    if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform() || !!window.Capacitor) {
       appUrlListener = App.addListener('appUrlOpen', async ({ url }) => {
         console.log('App URL opened:', url);
         if (url.startsWith('in.blueprintadvisor.app://') || url.includes('login-callback')) {
@@ -394,7 +394,11 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     setLoading(true);
     setErrorMsg('');
     try {
-      const isNative = Capacitor.isNativePlatform();
+      const isNative = Capacitor.isNativePlatform() || 
+                       !!window.Capacitor || 
+                       window.location.protocol === 'capacitor:' || 
+                       /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
+                       
       const redirectTo = isNative
         ? 'in.blueprintadvisor.app://login-callback'
         : window.location.origin;

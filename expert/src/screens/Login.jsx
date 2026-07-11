@@ -20,7 +20,7 @@ export default function Login({ onLogin, showNotification }) {
       if (session?.user && session?.user?.email && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !oauthHandled) {
         oauthHandled = true;
         
-        const actualToken = session.access_token || session.accessToken || (session as any)?.access_token;
+        const actualToken = session?.access_token || session?.accessToken;
         if (actualToken) {
           localStorage.setItem('accessToken', actualToken);
         }
@@ -45,7 +45,7 @@ export default function Login({ onLogin, showNotification }) {
 
           showNotification('Logged in successfully via Google!', 'success');
           onLogin(res.token || actualToken, res.user);
-        } catch (err: any) {
+        } catch (err) {
           showNotification(err.message || 'OAuth Sync failed.', 'error');
           oauthHandled = false;
         } finally {
@@ -56,7 +56,7 @@ export default function Login({ onLogin, showNotification }) {
 
     // Handle deep link callback from OAuth on Android
     let appUrlListener;
-    if (Capacitor.isNativePlatform()) {
+    if (Capacitor.isNativePlatform() || !!window.Capacitor) {
       appUrlListener = App.addListener('appUrlOpen', async ({ url }) => {
         console.log('App URL opened (Expert):', url);
         if (url.startsWith('com.blueprint.expert://') || url.includes('login-callback')) {
@@ -100,7 +100,11 @@ export default function Login({ onLogin, showNotification }) {
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      const isNative = Capacitor.isNativePlatform();
+      const isNative = Capacitor.isNativePlatform() || 
+                       !!window.Capacitor || 
+                       window.location.protocol === 'capacitor:' || 
+                       /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
+                       
       const redirectTo = isNative
         ? 'com.blueprint.expert://login-callback'
         : window.location.origin;
@@ -125,7 +129,7 @@ export default function Login({ onLogin, showNotification }) {
         }
         await Browser.open({ url: targetUrl, windowName: '_self' });
       }
-    } catch (err: any) {
+    } catch (err) {
       showNotification(err.message || 'Google Auth failed.', 'error');
       setLoading(false);
     }
