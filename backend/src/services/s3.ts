@@ -12,7 +12,9 @@ export const uploadFileToStorage = async (filePath: string, fileBuffer: Buffer, 
 };
 
 export const getSignedDownloadUrl = async (filePath: string, expiresIn = 3600): Promise<string> => {
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(filePath, expiresIn);
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(filePath, expiresIn, {
+    download: true
+  });
   if (error) throw new Error(`Signed URL failed: ${error.message}`);
   return data.signedUrl;
 };

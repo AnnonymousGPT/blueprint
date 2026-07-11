@@ -34,7 +34,7 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
     if (type === 'Chat') {
       setShowChat(true);
     } else {
-      addNotification(`Calling ${expert.name} via secure proxy dialer...`, 'info');
+      addNotification(`Calling ${expert?.user?.name || 'Assigned Advisor'} via secure proxy dialer...`, 'info');
     }
   };
 
@@ -71,7 +71,7 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
           read: true
         }
       ]);
-      addNotification(`${expert.name} replied to your message.`, 'info');
+      addNotification(`${expert?.user?.name || 'Your advisor'} replied to your message.`, 'info');
     }, 1500);
   };
 
@@ -685,13 +685,13 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
             {/* Expert Info Row */}
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
               <img 
-                src={expert.photo || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=150&q=80'} 
-                alt={expert.name} 
+                src={expert?.user?.photo || expert?.photo || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=150&q=80'} 
+                alt={expert?.user?.name || expert?.name || 'Advisor'} 
                 style={{ width: '48px', height: '48px', borderRadius: '14px', objectFit: 'cover' }} 
               />
               <div style={{ flex: 1 }}>
                 <h5 style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {expert.name || 'Assigned Advisor'}
+                  {expert?.user?.name || expert?.name || 'Assigned Advisor'}
                   {/* Blue verified check icon */}
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
                     <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM10 16.5L6 12.5L7.41 11.09L10 13.67L16.59 7.09L18 8.5L10 16.5Z" fill="#3B82F6" />
@@ -867,8 +867,8 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
           zIndex: 1000
         }}>
           <ChatBox
-            otherUserId={expert.id}
-            otherUserName={expert.name}
+            otherUserId={expert.userId}
+            otherUserName={expert?.user?.name || expert?.name}
             currentUserId={user?.id || 'cli-1'}
             onClose={() => setShowChat(false)}
             addNotification={addNotification}
