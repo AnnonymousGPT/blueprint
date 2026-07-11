@@ -20,7 +20,7 @@ async function main() {
     data: {
       phone: '8888888881',
       name: 'Daksh (Client)',
-      role: 'CLIENT',
+      role: 'USER',
     }
   });
 
@@ -30,10 +30,11 @@ async function main() {
       phone: '8888888882',
       name: 'CA Rajesh Sharma',
       role: 'EXPERT',
-      rating: 4.9,
-      expert: {
+      expertProfile: {
         create: {
           specialization: 'Corporate Taxation & ITR Auditing',
+          experience: '8 Years Exp',
+          rating: 4.9,
           reviewsCount: 248,
           fees: 1500,
         }
@@ -47,10 +48,11 @@ async function main() {
       phone: '8888888883',
       name: 'CA Neha Singhal',
       role: 'EXPERT',
-      rating: 4.8,
-      expert: {
+      expertProfile: {
         create: {
           specialization: 'GST Registration & Business Setup',
+          experience: '5 Years Exp',
+          rating: 4.8,
           reviewsCount: 180,
           fees: 1200,
         }
