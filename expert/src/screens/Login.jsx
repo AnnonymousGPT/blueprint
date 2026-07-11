@@ -13,25 +13,41 @@ export default function Login({ onLogin, showNotification }) {
   const inputRefs = useRef([]);
 
   useEffect(() => {
+    let oauthHandled = false;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION')) {
+      console.log('Supabase Auth Event (Expert):', event, session?.user?.email);
+      if (session?.user && session?.user?.email && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !oauthHandled) {
+        oauthHandled = true;
+        
+        const actualToken = session.access_token || session.accessToken || (session as any)?.access_token;
+        if (actualToken) {
+          localStorage.setItem('accessToken', actualToken);
+        }
+
         if (Capacitor.isNativePlatform()) {
           await Browser.close().catch(() => {});
         }
         setLoading(true);
         try {
           const res = await api.register({
-            phone: session.user.phone || session.user.email || 'Google-Expert',
+            phone: session.user.phone || session.user.email || `google-${session.user.id}`,
             name: session.user.user_metadata?.full_name || 'Google Expert',
             email: session.user.email,
             role: 'EXPERT',
             specialization: 'General Tax Consultant',
             fees: 1000
           });
+
+          if (res.token || res.accessToken) {
+            localStorage.setItem('accessToken', res.token || res.accessToken);
+          }
+
           showNotification('Logged in successfully via Google!', 'success');
-          onLogin(res.token, res.user);
-        } catch (err) {
+          onLogin(res.token || actualToken, res.user);
+        } catch (err: any) {
           showNotification(err.message || 'OAuth Sync failed.', 'error');
+          oauthHandled = false;
         } finally {
           setLoading(false);
         }
@@ -42,10 +58,35 @@ export default function Login({ onLogin, showNotification }) {
     let appUrlListener;
     if (Capacitor.isNativePlatform()) {
       appUrlListener = App.addListener('appUrlOpen', async ({ url }) => {
-        if (url.startsWith('com.blueprint.expert://')) {
+        console.log('App URL opened (Expert):', url);
+        if (url.startsWith('com.blueprint.expert://') || url.includes('login-callback')) {
           await Browser.close().catch(() => {});
+          setLoading(true);
+          
           const { error } = await supabase.auth.exchangeCodeForSession(url);
-          if (error) console.warn('OAuth exchange error:', error.message);
+          if (error) {
+            console.warn('OAuth exchange error, attempting fragment parse (Expert):', error.message);
+            const urlObj = new URL(url.replace('com.blueprint.expert://', 'https://localhost/'));
+            const params = new URLSearchParams(urlObj.hash.substring(1) || urlObj.search);
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+
+            if (accessToken && refreshToken) {
+              localStorage.setItem('accessToken', accessToken);
+              const { error: setSessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+              });
+              if (setSessionError) {
+                console.error('setSession fallback error (Expert):', setSessionError.message);
+                showNotification(setSessionError.message, 'error');
+                setLoading(false);
+              }
+            } else {
+              showNotification(error.message, 'error');
+              setLoading(false);
+            }
+          }
         }
       });
     }
@@ -69,14 +110,22 @@ export default function Login({ onLogin, showNotification }) {
         options: {
           redirectTo,
           skipBrowserRedirect: isNative,
+          queryParams: isNative ? {
+            access_type: 'offline',
+            prompt: 'consent'
+          } : undefined
         }
       });
       if (error) throw error;
 
       if (isNative && data?.url) {
-        await Browser.open({ url: data.url, windowName: '_self' });
+        let targetUrl = data.url;
+        if (targetUrl.includes('response_type=code')) {
+          targetUrl = targetUrl.replace('response_type=code', 'response_type=token');
+        }
+        await Browser.open({ url: targetUrl, windowName: '_self' });
       }
-    } catch (err) {
+    } catch (err: any) {
       showNotification(err.message || 'Google Auth failed.', 'error');
       setLoading(false);
     }
