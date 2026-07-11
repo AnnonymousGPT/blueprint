@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Fill entire screen with splash dark background color -->
+    <item android:drawable="@color/splash_bg" />
+    <!-- Scale the splash image to fill the screen -->
+    <item>
+        <bitmap
+            android:src="@drawable/splash"
+            android:gravity="fill" />
+    </item>
+</layer-list>

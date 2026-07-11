@@ -1,0 +1,23 @@
+# Root-level gitignore
+node_modules/
+dist/
+build/
+.env
+.env.production
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.tsbuildinfo
+
+# OS/IDE/Android files
+.DS_Store
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+android/app/build/
+android/app/src/main/assets/public/

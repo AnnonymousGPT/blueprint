@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ExpertApp</string>
+    <string name="title_activity_main">ExpertApp</string>
+    <string name="package_name">com.blueprint.expert</string>
+    <string name="custom_url_scheme">com.blueprint.expert</string>
+</resources>

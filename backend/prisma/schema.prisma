@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(uuid())
+  phone          String    @unique
+  role           String    @default("CLIENT")
+  name           String?
+  email          String?
+  rating         Float?    @default(5.0)
+  status         String    @default("ACTIVE")
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  clientRequests ServiceRequest[] @relation("ClientRequests")
+  expertRequests ServiceRequest[] @relation("ExpertRequests")
+  sentMessages   Message[] @relation("SentMessages")
+  receivedMsgs   Message[] @relation("ReceivedMessages")
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+  expert         Expert?
+}
+
+model Expert {
+  id             String @id @default(uuid())
+  userId         String @unique
+  description    String?
+  specialization String?
+  reviewsCount   Int?      @default(0)
+  casesDone      Int?      @default(0)
+  fees           Float?
+  user           User   @relation(fields: [userId], references: [id])
+}
+
+model ServiceRequest {
+  id               String   @id @default(uuid())
+  userId           String
+  assignedExpertId String?
+  serviceId        String
+  serviceName      String
+  status           String   @default("NEW")
+  priority         String   @default("FLEXIBLE")
+  amount           Float
+  progressPercent  Int      @default(0)
+  deletedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  client           User       @relation("ClientRequests", fields: [userId], references: [id])
+  assignedExpert   User?      @relation("ExpertRequests", fields: [assignedExpertId], references: [id])
+  documents        Document[]
+  bookings         Booking[]
+  slaAlerts        SlaAlert[]
+  payments         Payment[]
+}
+
+model Document {
+  id        String    @id @default(uuid())
+  requestId String
+  name      String
+  category  String
+  status    String    @default("UPLOADED")
+  reason    String?
+  size      String    @default("1.5 MB")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  request ServiceRequest @relation(fields: [requestId], references: [id])
+}
+
+model Booking {
+  id          String   @id @default(uuid())
+  requestId   String
+  date        String
+  time        String
+  type        String   @default("VIDEO")
+  status      String   @default("CONFIRMED")
+  roomUrl     String?
+  scheduledAt DateTime?
+  expertId    String?
+  userId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  request ServiceRequest @relation(fields: [requestId], references: [id])
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  content    String
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  details   String?
+  userId    String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model SlaAlert {
+  id               String   @id @default(uuid())
+  requestId        String
+  status           String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  serviceRequest ServiceRequest @relation(fields: [requestId], references: [id])
+}
+
+model Payment {
+  id               String   @id @default(uuid())
+  serviceRequestId String
+  amount           Float
+  totalAmount      Float?
+  status           String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+}
+
+model LedgerEntry {
+  id        String   @id @default(uuid())
+  amount    Float
+  type      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String
+  type      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}

@@ -1,0 +1,326 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../backend/node_modules/.prisma/client"
+}
+
+enum Role {
+  USER
+  ADMIN
+  EXPERT
+}
+
+enum Priority {
+  TODAY
+  THIS_WEEK
+  FLEXIBLE
+}
+
+enum RequestStatus {
+  SUBMITTED
+  EXPERT_ASSIGNED
+  DOCUMENTS_PENDING
+  IN_PROGRESS
+  REVIEW
+  COMPLETED
+}
+
+enum BookingStatus {
+  RESERVED
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum DocCategory {
+  PAN
+  AADHAAR
+  GST
+  BANK_STATEMENT
+  ITR
+  BUSINESS
+}
+
+enum DocStatus {
+  UPLOADED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum ConsultMode {
+  PHONE
+  VIDEO
+  CHAT
+}
+
+model User {
+  id        String   @id @default(uuid())
+  phone     String   @unique
+  email     String?  @unique
+  name      String
+  pan       String?
+  gst       String?
+  photo     String?  @default("https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256")
+  role      Role     @default(USER)
+  status    String   @default("ACTIVE") // ACTIVE, BLOCKED
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions      Session[]
+  requests      ServiceRequest[]
+  bookings      Booking[]
+  payments      Payment[]
+  documents     Document[]
+  expertProfile Expert?
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  supportTickets SupportTicket[]
+  sentMessages   Message[]      @relation("SentMessages")
+  receivedMessages Message[]    @relation("ReceivedMessages")
+
+  @@index([phone])
+  @@index([role])
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique
+  ipAddress    String?
+  userAgent    String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Expert {
+  id             String           @id @default(uuid())
+  userId         String           @unique
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialization String
+  experience     String           // e.g. "8 Years Exp"
+  rating         Float            @default(5.0)
+  reviewsCount   Int              @default(0)
+  fees           Int              @default(1000)
+  bio            String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  requests       ServiceRequest[]
+  bookings       Booking[]
+  slaAlerts      SlaAlert[]
+}
+
+model ServiceRequest {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceType     String        // e.g. "ITR", "GST"
+  serviceName     String        // e.g. "File ITR FY 2025-26"
+  description     String?
+  priority        Priority      @default(FLEXIBLE)
+  status          RequestStatus @default(SUBMITTED)
+  progressPercent Int           @default(15)
+  assignedExpertId String?
+  assignedExpert  Expert?       @relation(fields: [assignedExpertId], references: [id], onDelete: SetNull)
+  deletedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  bookings  Booking[]
+  payments  Payment[]
+  documents Document[]
+  slaAlerts SlaAlert[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([assignedExpertId])
+}
+
+model Booking {
+  id          String        @id @default(uuid())
+  requestId   String
+  request     ServiceRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expertId    String
+  expert      Expert        @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  scheduledAt DateTime      // ISO 8601 UTC timestamp
+  type        ConsultMode   @default(VIDEO)
+  status      BookingStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  invoice     Invoice?
+
+  @@unique([expertId, scheduledAt]) // Avoid conflict prevention: double-booking same slot
+  @@index([userId])
+  @@index([requestId])
+  @@index([expertId])
+}
+
+model Payment {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId    String?
+  request      ServiceRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  orderId      String        @unique // Razorpay Order ID
+  paymentId    String?       @unique // Razorpay Payment ID after verification
+  signature    String?
+  amount       Int
+  platformFee  Int           @default(99)
+  totalAmount  Int
+  status       PaymentStatus @default(PENDING)
+  method       String?       // UPI, Card, Netbanking
+  invoiceId    String?
+  invoice      Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([orderId])
+}
+
+model Document {
+  id        String      @id @default(uuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId String?
+  request   ServiceRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  name      String      // File display name
+  key       String      // S3 File object key
+  size      String      // e.g. "1.2 MB"
+  category  DocCategory
+  status    DocStatus   @default(UPLOADED)
+  reason    String?     // Rejected comments
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  versions  DocVersion[]
+
+  @@index([userId])
+  @@index([requestId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  type      String   // OTP_SENT, EXPERT_ASSIGNED, DOCS_REQUIRED, REMINDER, PAY_SUCCESS, WORK_DONE
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   // e.g. "AUTH_LOGIN", "DOC_UPLOAD", "PAYMENT_COMPLETE"
+  details   String   // JSON text descriptions
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model Invoice {
+  id             String        @id @default(uuid())
+  invoiceNumber  String        @unique
+  bookingId      String        @unique
+  booking        Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  totalAmount    Int
+  platformFee    Int
+  gstAmount      Int
+  status         PaymentStatus @default(PENDING)
+  idempotencyKey String?       @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  payments       Payment[]
+  ledgerEntries  LedgerEntry[]
+}
+
+model LedgerEntry {
+  id        String   @id @default(uuid())
+  invoiceId String
+  invoice   Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount    Int      // Positive for credit, negative for debit
+  type      String   // CREDIT, DEBIT
+  balance   Int      // Running balance after this entry
+  details   String
+  createdAt DateTime @default(now())
+}
+
+model SupportTicket {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category       String       // e.g. "PAYMENT", "TECHNICAL", "EXPERT_DISPUTE"
+  priority       String       // e.g. "LOW", "MEDIUM", "HIGH"
+  status         TicketStatus @default(OPEN)
+  assignedAgentId String?
+  resolutionNotes String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  content    String
+  isRead     Boolean  @default(false)
+  fileUrl    String?  // Attachment
+  createdAt  DateTime @default(now())
+
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId])
+  @@index([receiverId])
+}
+
+model DocVersion {
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  key        String
+  size       String
+  version    Int      @default(1)
+  uploadedBy String   // USER or EXPERT
+  createdAt  DateTime @default(now())
+}
+
+model SlaAlert {
+  id          String   @id @default(uuid())
+  requestId   String?
+  request     ServiceRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  expertId    String?
+  expert      Expert?  @relation(fields: [expertId], references: [id], onDelete: SetNull)
+  type        String   // ASSIGNMENT_DELAY, RESPONSE_DELAY, REVIEW_DELAY
+  description String
+  severity    String   // WARNING, CRITICAL
+  createdAt   DateTime @default(now())
+}

@@ -1,0 +1,94 @@
+.app-container {
+  display: flex;
+  min-height: 100vh;
+  background-color: #0f172a; /* Desktop dark background */
+  align-items: center;
+  justify-content: center;
+  gap: 64px;
+}
+
+.controls-panel {
+  color: white;
+  max-width: 300px;
+}
+
+.controls-brand {
+  font-size: 24px;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.controls-info {
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.phone-mockup {
+  width: 390px;
+  height: 844px;
+  background: white;
+  border-radius: 40px;
+  position: relative;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border: 12px solid #1e293b;
+  overflow: hidden;
+}
+
+.phone-notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 150px;
+  height: 25px;
+  background: #1e293b;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+  z-index: 100;
+}
+
+.phone-screen {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-main);
+  position: relative;
+}
+
+/* Make it fullscreen on mobile */
+@media (max-width: 768px) {
+  .app-container {
+    background: var(--bg-main);
+    display: block;
+  }
+  
+  .controls-panel {
+    display: none;
+  }
+
+  .phone-mockup {
+    width: 100%;
+    height: 100vh;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+  
+  .phone-notch {
+    display: none;
+  }
+  
+  .status-bar {
+    border-radius: 0;
+    display: none; /* Native OS shows its own status bar usually */
+  }
+  
+  .screen-container {
+    height: calc(100vh - 64px); /* Full height minus bottom bar */
+  }
+  
+  .bottom-bar {
+    border-radius: 0;
+    position: fixed;
+  }
+}
