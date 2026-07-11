@@ -395,13 +395,22 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
         options: {
           redirectTo,
           skipBrowserRedirect: isNative,
+          queryParams: isNative ? {
+            access_type: 'offline',
+            prompt: 'consent'
+          } : undefined
         }
       });
       if (error) throw error;
 
       // On native: open in-app browser manually
       if (isNative && data?.url) {
-        await Browser.open({ url: data.url, windowName: '_self' });
+        // Force replace auth flow redirect URL to return hash tokens instead of authorization code
+        let targetUrl = data.url;
+        if (targetUrl.includes('response_type=code')) {
+          targetUrl = targetUrl.replace('response_type=code', 'response_type=token');
+        }
+        await Browser.open({ url: targetUrl, windowName: '_self' });
       }
     } catch (err) {
       setErrorMsg(err.message);

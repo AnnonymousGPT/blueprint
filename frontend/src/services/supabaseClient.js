@@ -9,10 +9,11 @@ const isNative = Capacitor.isNativePlatform();
 
 // When running inside Android Webview, the main URL is https://localhost/ which doesn't have the auth hash.
 // If detectSessionInUrl is true on native, it conflicts with manual exchangeCodeForSession verifiers.
+// Use implicit flow to avoid code verifier state storage reset errors on Android Webview redirect
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    flowType: 'pkce',
-    detectSessionInUrl: !isNative, // Disable on native!
+    flowType: 'implicit',
+    detectSessionInUrl: true,
     autoRefreshToken: true,
     persistSession: true,
   }
