@@ -149,10 +149,15 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     }
     window.scrollTo?.(0, 0);
 
-    // Listen for Supabase OAuth callbacks
+    // Guard to prevent double-calling api.register
+    let oauthHandled = false;
+
+    // Listen for Supabase OAuth callbacks — handle SIGNED_IN & INITIAL_SESSION to make sure sessions are captured
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // INITIAL_SESSION fires on web after PKCE code exchange (page reload)
-      if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION')) {
+      console.log('Supabase Auth Event:', event, session?.user?.email);
+      if (session?.user && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !oauthHandled) {
+        oauthHandled = true;
+        
         // Close browser on native (after OAuth redirect)
         if (Capacitor.isNativePlatform()) {
           await Browser.close().catch(() => {});
@@ -166,12 +171,18 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             email: session.user.email,
             role: 'CLIENT'
           });
+          
+          // Ensure token is stored
+          if (res.token || res.accessToken) {
+            localStorage.setItem('accessToken', res.token || res.accessToken);
+          }
+          
           addNotification?.(`Logged in successfully via Google!`, 'success');
           onLoginSuccess?.(res.user);
         } catch (err) {
           setErrorMsg(err.message);
           addNotification?.(err.message, 'error');
-        } finally {
+          oauthHandled = false; // allow retry on error
           setLoading(false);
         }
       }
@@ -181,11 +192,39 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     let appUrlListener;
     if (Capacitor.isNativePlatform()) {
       appUrlListener = App.addListener('appUrlOpen', async ({ url }) => {
-        if (url.startsWith('in.blueprintadvisor.app://')) {
+        console.log('App URL opened:', url);
+        if (url.startsWith('in.blueprintadvisor.app://') || url.includes('login-callback')) {
           await Browser.close().catch(() => {});
-          // Supabase PKCE flow: exchange code for session
+          setLoading(true);
+
+          // Standard PKCE flow code exchange
           const { error } = await supabase.auth.exchangeCodeForSession(url);
-          if (error) console.warn('OAuth exchange error:', error.message);
+          if (error) {
+            console.warn('OAuth exchange error, attempting fragment parse:', error.message);
+            
+            // Fallback parsing: In case verifier local state was reset due to WebView reload,
+            // check if access_token and refresh_token are encoded in url redirect hash/query parameters.
+            const urlObj = new URL(url.replace('in.blueprintadvisor.app://', 'https://localhost/'));
+            // Parse query or hash fragment
+            const params = new URLSearchParams(urlObj.hash.substring(1) || urlObj.search);
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+
+            if (accessToken && refreshToken) {
+              const { error: setSessionError } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+              });
+              if (setSessionError) {
+                console.error('setSession fallback error:', setSessionError.message);
+                setErrorMsg(setSessionError.message);
+                setLoading(false);
+              }
+            } else {
+              setErrorMsg(error.message);
+              setLoading(false);
+            }
+          }
         }
       });
     }
