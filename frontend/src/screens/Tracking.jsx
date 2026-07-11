@@ -857,22 +857,36 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
       )}
       {/* Chat Overlay */}
       {showChat && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: '#F8FAFC',
-          zIndex: 1000
-        }}>
-          <ChatBox
-            otherUserId={expert.userId}
-            otherUserName={expert?.user?.name || expert?.name}
-            currentUserId={user?.id || 'cli-1'}
-            onClose={() => setShowChat(false)}
-            addNotification={addNotification}
-          />
+        <div 
+          onClick={() => setShowChat(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+            zIndex: 1000
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            style={{ 
+              position: 'absolute', 
+              bottom: 0, 
+              left: 0, 
+              right: 0, 
+              height: '60%' 
+            }}
+          >
+            <ChatBox
+              otherUserId={expert.userId}
+              otherUserName={expert?.user?.name || expert?.name}
+              currentUserId={user?.id || 'cli-1'}
+              onClose={() => setShowChat(false)}
+              addNotification={addNotification}
+            />
+          </div>
         </div>
       )}
 
