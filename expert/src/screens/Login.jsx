@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { api } from '../services/apiService';
 import { supabase } from '../services/supabaseClient';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+import { App } from '@capacitor/app';
 
 export default function Login({ onLogin, showNotification }) {
   const [step, setStep] = useState(1);
@@ -12,6 +15,9 @@ export default function Login({ onLogin, showNotification }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
+        if (Capacitor.isNativePlatform()) {
+          await Browser.close().catch(() => {});
+        }
         setLoading(true);
         try {
           const res = await api.register({
@@ -32,21 +38,44 @@ export default function Login({ onLogin, showNotification }) {
       }
     });
 
+    // Handle deep link callback from OAuth on Android
+    let appUrlListener;
+    if (Capacitor.isNativePlatform()) {
+      appUrlListener = App.addListener('appUrlOpen', async ({ url }) => {
+        if (url.startsWith('com.blueprint.expert://')) {
+          await Browser.close().catch(() => {});
+          const { error } = await supabase.auth.exchangeCodeForSession(url);
+          if (error) console.warn('OAuth exchange error:', error.message);
+        }
+      });
+    }
+
     return () => {
       subscription?.unsubscribe();
+      appUrlListener?.then?.(l => l.remove());
     };
   }, []);
 
   const handleGoogleLogin = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const isNative = Capacitor.isNativePlatform();
+      const redirectTo = isNative
+        ? 'com.blueprint.expert://login-callback'
+        : window.location.origin;
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo,
+          skipBrowserRedirect: isNative,
         }
       });
       if (error) throw error;
+
+      if (isNative && data?.url) {
+        await Browser.open({ url: data.url, windowName: '_self' });
+      }
     } catch (err) {
       showNotification(err.message || 'Google Auth failed.', 'error');
       setLoading(false);

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../services/apiService';
 import { supabase } from '../services/supabaseClient';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+import { App } from '@capacitor/app';
 
 function Icon({ name, size = 20, color = 'currentColor', strokeWidth = 2.2 }) {
   const common = {
@@ -149,10 +152,13 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     // Listen for Supabase OAuth callbacks
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
+        // Close browser on native (after OAuth redirect)
+        if (Capacitor.isNativePlatform()) {
+          await Browser.close().catch(() => {});
+        }
         setLoading(true);
         setErrorMsg('');
         try {
-          // Sync user to Express DB using API register call
           const res = await api.register({
             phone: session.user.phone || session.user.email || 'Google-User',
             name: session.user.user_metadata?.full_name || 'Google User',
@@ -170,8 +176,22 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
       }
     });
 
+    // Handle deep link callback from OAuth on Android
+    let appUrlListener;
+    if (Capacitor.isNativePlatform()) {
+      appUrlListener = App.addListener('appUrlOpen', async ({ url }) => {
+        if (url.startsWith('in.blueprintadvisor.app://')) {
+          await Browser.close().catch(() => {});
+          // Supabase PKCE flow: exchange code for session
+          const { error } = await supabase.auth.exchangeCodeForSession(url);
+          if (error) console.warn('OAuth exchange error:', error.message);
+        }
+      });
+    }
+
     return () => {
       subscription?.unsubscribe();
+      appUrlListener?.then?.(l => l.remove());
     };
   }, []);
 
@@ -325,13 +345,24 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     setLoading(true);
     setErrorMsg('');
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const isNative = Capacitor.isNativePlatform();
+      const redirectTo = isNative
+        ? 'in.blueprintadvisor.app://login-callback'
+        : window.location.origin;
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          redirectTo,
+          skipBrowserRedirect: isNative,
         }
       });
       if (error) throw error;
+
+      // On native: open in-app browser manually
+      if (isNative && data?.url) {
+        await Browser.open({ url: data.url, windowName: '_self' });
+      }
     } catch (err) {
       setErrorMsg(err.message);
       addNotification?.(err.message, 'error');
