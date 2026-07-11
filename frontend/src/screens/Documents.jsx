@@ -602,113 +602,140 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
       )}
 
       {/* Overall Progress Card */}
-      <div 
-        className="card"
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '18px',
-          borderRadius: '20px',
-          border: '1.5px solid rgba(226, 232, 240, 0.8)',
-          backgroundColor: '#FFFFFF',
-          boxShadow: '0 4px 20px rgba(10, 37, 64, 0.03)',
-          width: '100%',
-          gap: '12px'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '12px' }}>
-          {/* Circular Progress */}
-          <div style={{ position: 'relative', width: '68px', height: '68px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <svg width="68" height="68" viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
-              <circle cx="18" cy="18" r="16" fill="none" stroke="rgba(14, 165, 233, 0.08)" strokeWidth="3.2" />
-              <circle 
-                cx="18" 
-                cy="18" 
-                r="16" 
-                fill="none" 
-                stroke="#2563EB" 
-                strokeWidth="3.2" 
-                strokeDasharray="75, 100" 
-                style={{ transition: 'stroke-dasharray 1s ease-in-out', strokeLinecap: 'round' }}
-              />
-            </svg>
-            <span style={{ position: 'absolute', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-accent)' }}>
-              75%
-            </span>
-          </div>
+      {(() => {
+        const requiredCategories = ['PAN', 'Aadhaar', 'Bank Statement', 'ITR Copy'];
+        const uploadedRequired = requiredCategories.filter(cat => 
+          documents.some(d => d.category === cat && (d.status === 'UPLOADED' || d.status === 'APPROVED' || d.status === 'UNDER_REVIEW'))
+        );
+        const uploadedCount = uploadedRequired.length;
+        const progressPercentage = Math.round((uploadedCount / 4) * 100);
+        
+        // Milestone conditions
+        const isUploadDone = documents.length > 0;
+        const isVerifyDone = isUploadDone && documents.every(d => d.status === 'APPROVED');
+        const isReviewDone = isUploadDone && documents.some(d => d.status === 'APPROVED' || d.status === 'UNDER_REVIEW');
+        const isComplete = progressPercentage === 100 && documents.every(d => d.status === 'APPROVED');
 
-          {/* Details */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-              Overall Progress
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
-              <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-                Step 4 of 4
-              </h4>
-              <span 
-                style={{
-                  fontSize: '0.64rem',
-                  fontWeight: 800,
-                  color: '#2563EB',
-                  backgroundColor: '#EFF6FF',
-                  padding: '3px 8px',
-                  borderRadius: '12px',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                Almost there!
-              </span>
+        return (
+          <div 
+            className="card"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '18px',
+              borderRadius: '20px',
+              border: '1.5px solid rgba(226, 232, 240, 0.8)',
+              backgroundColor: '#FFFFFF',
+              boxShadow: '0 4px 20px rgba(10, 37, 64, 0.03)',
+              width: '100%',
+              gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '12px' }}>
+              {/* Circular Progress */}
+              <div style={{ position: 'relative', width: '68px', height: '68px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="68" height="68" viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
+                  <circle cx="18" cy="18" r="16" fill="none" stroke="rgba(14, 165, 233, 0.08)" strokeWidth="3.2" />
+                  <circle 
+                    cx="18" 
+                    cy="18" 
+                    r="16" 
+                    fill="none" 
+                    stroke={progressPercentage === 100 ? 'var(--success)' : '#2563EB'} 
+                    strokeWidth="3.2" 
+                    strokeDasharray={`${progressPercentage}, 100`} 
+                    style={{ transition: 'stroke-dasharray 1s ease-in-out', strokeLinecap: 'round' }}
+                  />
+                </svg>
+                <span style={{ position: 'absolute', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-accent)' }}>
+                  {progressPercentage}%
+                </span>
+              </div>
+
+              {/* Details */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                  Overall Progress
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                  <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+                    {uploadedCount} of 4 Files Uploaded
+                  </h4>
+                  <span 
+                    style={{
+                      fontSize: '0.64rem',
+                      fontWeight: 800,
+                      color: progressPercentage === 100 ? 'var(--success)' : '#2563EB',
+                      backgroundColor: progressPercentage === 100 ? 'rgba(16, 185, 129, 0.1)' : '#EFF6FF',
+                      padding: '3px 8px',
+                      borderRadius: '12px',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {progressPercentage === 100 ? 'All Staged!' : 'Uploading docs...'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Thick dynamic progress bar */}
+            <div style={{ width: '100%', height: '8px', backgroundColor: '#EFF6FF', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
+              <div style={{ width: `${progressPercentage}%`, height: '100%', backgroundColor: progressPercentage === 100 ? 'var(--success)' : '#2563EB', borderRadius: '4px', transition: 'width 0.6s ease-in-out' }} />
+            </div>
+
+            {/* Horizontal milestones timeline checklist */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '4px', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
+              {/* Upload */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isUploadDone ? '#10B981' : 'var(--text-tertiary)' }}>
+                <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: isUploadDone ? '#10B981' : 'var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
+                  {isUploadDone ? (
+                    <svg width="8" height="6" viewBox="0 0 10 8" fill="none">
+                      <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : '1'}
+                </div>
+                <span>Upload</span>
+              </div>
+
+              {/* Verify */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isVerifyDone ? '#10B981' : 'var(--text-tertiary)' }}>
+                <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: isVerifyDone ? '#10B981' : 'var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
+                  {isVerifyDone ? (
+                    <svg width="8" height="6" viewBox="0 0 10 8" fill="none">
+                      <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : '2'}
+                </div>
+                <span>Verify</span>
+              </div>
+
+              {/* Review */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isReviewDone ? '#10B981' : 'var(--text-tertiary)' }}>
+                <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: isReviewDone ? '#10B981' : 'var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
+                  {isReviewDone ? (
+                    <svg width="8" height="6" viewBox="0 0 10 8" fill="none">
+                      <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : '3'}
+                </div>
+                <span>Review</span>
+              </div>
+
+              {/* Complete */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: isComplete ? '#10B981' : 'var(--text-tertiary)' }}>
+                <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: isComplete ? '#10B981' : 'var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.6rem', fontWeight: 800, flexShrink: 0 }}>
+                  {isComplete ? (
+                    <svg width="8" height="6" viewBox="0 0 10 8" fill="none">
+                      <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : '4'}
+                </div>
+                <span>Complete</span>
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* Thick blue horizontal progress bar */}
-        <div style={{ width: '100%', height: '8px', backgroundColor: '#EFF6FF', borderRadius: '4px', overflow: 'hidden', position: 'relative' }}>
-          <div style={{ width: '75%', height: '100%', backgroundColor: '#2563EB', borderRadius: '4px' }} />
-        </div>
-
-        {/* Horizontal milestones timeline checklist */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginTop: '4px', fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-secondary)' }}>
-          {/* Upload */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10B981' }}>
-            <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
-              <svg width="8" height="6" viewBox="0 0 10 8" fill="none">
-                <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <span>Upload</span>
-          </div>
-
-          {/* Verify */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10B981' }}>
-            <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
-              <svg width="8" height="6" viewBox="0 0 10 8" fill="none">
-                <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <span>Verify</span>
-          </div>
-
-          {/* Review */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#10B981' }}>
-            <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', flexShrink: 0 }}>
-              <svg width="8" height="6" viewBox="0 0 10 8" fill="none">
-                <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
-            <span>Review</span>
-          </div>
-
-          {/* Complete */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#2563EB' }}>
-            <div style={{ width: '16px', height: '16px', borderRadius: '50%', backgroundColor: '#2563EB', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: '0.6rem', fontWeight: 800, flexShrink: 0 }}>
-              4
-            </div>
-            <span>Complete</span>
-          </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Select Category Upload Destination Box */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
