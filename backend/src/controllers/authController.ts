@@ -37,13 +37,14 @@ export const verifyOtp = async (req: Request, res: Response) => {
     }
     otpStore.delete(phone);
 
-    let user = await prisma.user.findUnique({ where: { phone }, include: { expert: true } as any });
+    let user = await prisma.user.findUnique({ where: { phone }, include: { expertProfile: true } as any });
     if (!user) {
       // Direct redirection to signup onboarding form
       return res.status(200).json({ success: true, onboardingRequired: true, phone });
     }
 
-    const token = jwt.sign({ id: user.id, role: user.role }, JWT_ACCESS_SECRET, { expiresIn: '7d' });
+    const jwtRole = user.role === 'USER' ? 'CLIENT' : user.role;
+    const token = jwt.sign({ id: user.id, role: jwtRole, phone: user.phone }, JWT_ACCESS_SECRET, { expiresIn: '7d' });
     
     await prisma.auditLog.create({
       data: { action: 'AUTH_LOGIN', userId: user.id, details: 'Login successful' }
@@ -55,20 +56,22 @@ export const verifyOtp = async (req: Request, res: Response) => {
 };
 
 export const register = async (req: Request, res: Response) => {
-  const { phone, name, email, role, specialization, fees } = req.body;
+  const { phone, name, email, role, specialization, fees, experience } = req.body;
   try {
     const validatedRole = role || 'CLIENT';
-    if (!['CLIENT', 'ADMIN', 'EXPERT'].includes(validatedRole)) {
+    const dbRole = validatedRole === 'CLIENT' ? 'USER' : validatedRole;
+    if (!['USER', 'ADMIN', 'EXPERT'].includes(dbRole)) {
       return res.status(400).json({ error: 'Invalid role selected.' });
     }
 
     // Upsert: if user already exists (by phone or email), return them with a fresh token
     const existingUser = await prisma.user.findFirst({
       where: { OR: [{ phone }, ...(email ? [{ email }] : [])] },
-      include: { expert: true } as any
+      include: { expertProfile: true } as any
     });
     if (existingUser) {
-      const token = jwt.sign({ id: existingUser.id, role: existingUser.role }, JWT_ACCESS_SECRET, { expiresIn: '7d' });
+      const jwtRole = existingUser.role === 'USER' ? 'CLIENT' : existingUser.role;
+      const token = jwt.sign({ id: existingUser.id, role: jwtRole, phone: existingUser.phone }, JWT_ACCESS_SECRET, { expiresIn: '7d' });
       return res.status(200).json({ success: true, token, user: existingUser });
     }
 
@@ -77,20 +80,22 @@ export const register = async (req: Request, res: Response) => {
         phone,
         name,
         email: email || null,
-        role: validatedRole,
-        expert: validatedRole === 'EXPERT' ? {
+        role: dbRole as any,
+        expertProfile: dbRole === 'EXPERT' ? {
           create: {
             specialization: specialization || 'General CA Consultant',
+            experience: experience || '5 Years Exp',
             fees: fees ? parseFloat(fees) : 1000,
             reviewsCount: 0,
-            casesDone: 0
+            rating: 5.0
           }
         } : undefined
-      } as any,
-      include: { expert: true } as any
+      },
+      include: { expertProfile: true } as any
     });
 
-    const token = jwt.sign({ id: user.id, role: user.role }, JWT_ACCESS_SECRET, { expiresIn: '7d' });
+    const jwtRole = user.role === 'USER' ? 'CLIENT' : user.role;
+    const token = jwt.sign({ id: user.id, role: jwtRole, phone: user.phone }, JWT_ACCESS_SECRET, { expiresIn: '7d' });
 
     await prisma.auditLog.create({
       data: { action: 'AUTH_REGISTER', userId: user.id, details: `Registered user as ${validatedRole}` }
@@ -108,7 +113,7 @@ export const getMe = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      include: { expert: true } as any
+      include: { expertProfile: true } as any
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     return res.status(200).json({ success: true, user });
