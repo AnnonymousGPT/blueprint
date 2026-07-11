@@ -136,12 +136,26 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
   const [stagedFile, setStagedFile] = useState(null);
 
   const checklist = useMemo(() => {
-    const checkItem = (cat, reqType) => {
-      const doc = documents.find(d => d.category === cat);
+    const categoryMapping = {
+      'PAN': 'PAN',
+      'Aadhaar': 'AADHAAR',
+      'Bank Statement': 'BANK_STATEMENT',
+      'ITR Copy': 'ITR',
+      'GST Certificate': 'GST'
+    };
+
+    const checkItem = (displayCat, reqType) => {
+      const dbCat = categoryMapping[displayCat];
+      const doc = documents.find(d => d.category === dbCat);
       if (doc) {
-        return { category: cat, status: doc.status, name: doc.name, reason: doc.reason };
+        let displayStatus = 'Uploaded';
+        if (doc.status === 'APPROVED') displayStatus = 'Approved';
+        else if (doc.status === 'REJECTED') displayStatus = 'Rejected';
+        else if (doc.status === 'UNDER_REVIEW' || doc.status === 'UPLOADED') displayStatus = 'Under Review';
+
+        return { category: displayCat, dbCategory: dbCat, status: displayStatus, name: doc.name, reason: doc.reason };
       }
-      return { category: cat, status: 'Missing', reqType };
+      return { category: displayCat, dbCategory: dbCat, status: 'Missing', reqType };
     };
 
     return [
@@ -603,17 +617,24 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
 
       {/* Overall Progress Card */}
       {(() => {
+        const categoryMapping = {
+          'PAN': 'PAN',
+          'Aadhaar': 'AADHAAR',
+          'Bank Statement': 'BANK_STATEMENT',
+          'ITR Copy': 'ITR'
+        };
         const requiredCategories = ['PAN', 'Aadhaar', 'Bank Statement', 'ITR Copy'];
-        const uploadedRequired = requiredCategories.filter(cat => 
-          documents.some(d => d.category === cat && (d.status === 'UPLOADED' || d.status === 'APPROVED' || d.status === 'UNDER_REVIEW'))
-        );
+        const uploadedRequired = requiredCategories.filter(cat => {
+          const dbCat = categoryMapping[cat];
+          return documents.some(d => d.category === dbCat && (d.status === 'UPLOADED' || d.status === 'APPROVED' || d.status === 'UNDER_REVIEW'));
+        });
         const uploadedCount = uploadedRequired.length;
         const progressPercentage = Math.round((uploadedCount / 4) * 100);
         
         // Milestone conditions
         const isUploadDone = documents.length > 0;
         const isVerifyDone = isUploadDone && documents.every(d => d.status === 'APPROVED');
-        const isReviewDone = isUploadDone && documents.some(d => d.status === 'APPROVED' || d.status === 'UNDER_REVIEW');
+        const isReviewDone = isUploadDone && documents.some(d => d.status === 'APPROVED' || d.status === 'UNDER_REVIEW' || d.status === 'UPLOADED');
         const isComplete = progressPercentage === 100 && documents.every(d => d.status === 'APPROVED');
 
         return (
