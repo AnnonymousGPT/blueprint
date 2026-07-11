@@ -762,7 +762,7 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
       )}
 
       {/* Download Deliverables Section */}
-      {activeRequest.deliverables.length > 0 && (
+      {(activeRequest.deliverables || []).length > 0 && (
         <div style={{ width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <h4 style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
@@ -780,7 +780,7 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {activeRequest.deliverables.map((file, idx) => (
+            {(activeRequest.deliverables || []).map((file, idx) => (
               <div 
                 key={idx}
                 className="card"
