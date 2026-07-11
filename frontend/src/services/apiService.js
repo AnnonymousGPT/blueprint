@@ -3,7 +3,7 @@ export const mockExperts = [];
 export const initialRequests = [];
 export const initialDocuments = [];
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'https://blueprint-backend-msrn.onrender.com/api';
 
 const getHeaders = () => {
   const token = localStorage.getItem('accessToken');
