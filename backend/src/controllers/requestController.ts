@@ -18,13 +18,21 @@ export const createRequest = async (req: AuthenticatedRequest, res: Response) =>
       }
     }
 
+    // Determine required serviceType dynamically from serviceName
+    let serviceType = 'BUSINESS';
+    const sName = (serviceName || '').toUpperCase();
+    if (sName.includes('ITR') || sName.includes('TAX') || sName.includes('INCOME')) {
+      serviceType = 'ITR';
+    } else if (sName.includes('GST')) {
+      serviceType = 'GST';
+    }
+
     const request = await prisma.serviceRequest.create({
       data: {
         userId: req.user!.id,
-        serviceId: serviceId || 'srv-001',
         serviceName,
+        serviceType,
         assignedExpertId: dbExpertId,
-        amount: amount || 1499,
         status: (dbExpertId ? 'EXPERT_ASSIGNED' : 'SUBMITTED') as any,
       } as any
     });
@@ -43,7 +51,7 @@ export const createRequest = async (req: AuthenticatedRequest, res: Response) =>
     return res.status(201).json({ success: true, data: request });
   } catch (error: any) {
     console.error('createRequest failed:', error?.message);
-    return res.status(500).json({ error: 'Failed to create request' });
+    return res.status(500).json({ error: 'Failed to create request', detail: error?.message, stack: error?.stack });
   }
 };
 
