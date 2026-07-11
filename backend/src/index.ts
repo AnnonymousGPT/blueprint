@@ -86,7 +86,8 @@ export const broadcastRequestUpdate = (requestId: string, data: any) => {
   io.to(`request_${requestId}`).emit('request_updated', data);
 };
 
-server.listen(PORT, () => {
-  console.log(`[API Server] Running on http://localhost:${PORT}`);
+const listenPort = typeof PORT === 'string' ? parseInt(PORT, 10) : PORT;
+server.listen(listenPort, '0.0.0.0', () => {
+  console.log(`[API Server] Running on http://0.0.0.0:${listenPort}`);
   console.log(`[Socket.io] Ready for connections`);
 });
