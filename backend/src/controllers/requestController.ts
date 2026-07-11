@@ -6,14 +6,26 @@ import { broadcastRequestUpdate } from '../index';
 export const createRequest = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { serviceId, serviceName, assignedExpertId, amount } = req.body;
+    
+    // Resolve assignedExpertId (which is User ID from frontend) to Expert Profile ID
+    let dbExpertId: string | null = null;
+    if (assignedExpertId) {
+      const expert = await prisma.expert.findUnique({
+        where: { userId: assignedExpertId }
+      });
+      if (expert) {
+        dbExpertId = expert.id;
+      }
+    }
+
     const request = await prisma.serviceRequest.create({
       data: {
         userId: req.user!.id,
         serviceId: serviceId || 'srv-001',
         serviceName,
-        assignedExpertId: assignedExpertId || null,
+        assignedExpertId: dbExpertId,
         amount: amount || 1499,
-        status: (assignedExpertId ? 'EXPERT_ASSIGNED' : 'NEW') as any,
+        status: (dbExpertId ? 'EXPERT_ASSIGNED' : 'SUBMITTED') as any,
       } as any
     });
 
