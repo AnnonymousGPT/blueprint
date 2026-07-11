@@ -48,10 +48,26 @@ export const api = {
   },
 
   getBookings: async (token) => {
-    // Note: If you want to fetch bookings you might need a /api/bookings GET endpoint
-    // For now we'll simulate fetching from requests or just returning empty array
-    // Since getRequests includes bookings, you can extract them there.
-    return { success: true, data: [] };
+    try {
+      const res = await api.getRequests(token);
+      const reqs = res.data || [];
+      const allBookings = [];
+      reqs.forEach(req => {
+        if (req.bookings && req.bookings.length > 0) {
+          req.bookings.forEach(b => {
+            allBookings.push({
+              ...b,
+              clientName: req.client?.name || 'Unknown Client',
+              serviceName: req.serviceName
+            });
+          });
+        }
+      });
+      return { success: true, data: allBookings };
+    } catch (e) {
+      console.error(e);
+      return { success: false, data: [] };
+    }
   },
 
   createBooking: async (token, bookingData) => {

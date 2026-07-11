@@ -69,7 +69,7 @@ export default function CaseDetail({ token, user, onNavigate, showNotification, 
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '4px', color: 'var(--primary-dark)' }}>{req.serviceName}</div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '2px' }}>👤 {req.clientName}</div>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '2px' }}>👤 {req.client?.name || 'Client'}</div>
               <div style={{ fontSize: '0.85rem', color: req.priority === 'TODAY' ? 'var(--error)' : 'var(--text-muted)' }}>
                 📅 Due: {new Date(req.createdAt).toLocaleDateString()}
               </div>
@@ -140,7 +140,7 @@ export default function CaseDetail({ token, user, onNavigate, showNotification, 
             </div>
             <div className="flex-col" style={{ alignItems: 'center', textAlign: 'center', gridColumn: '1 / span 3', marginTop: '8px', paddingTop: '12px', borderTop: '1px solid var(--border-light)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr' }}>
                <div>
-                 <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{req.clientName.split(' ')[0]}</div>
+                 <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{(req.client?.name || 'Client').split(' ')[0]}</div>
                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Client</div>
                </div>
                <div>
