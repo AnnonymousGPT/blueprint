@@ -97,9 +97,13 @@ export const register = async (req: Request, res: Response) => {
     });
 
     return res.status(201).json({ success: true, token, user });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Registration failed:', error);
-    return res.status(500).json({ error: 'Registration failed.' });
+    return res.status(500).json({ 
+      error: 'Registration failed.', 
+      details: error.message, 
+      stack: error.stack 
+    });
   }
 };
 
