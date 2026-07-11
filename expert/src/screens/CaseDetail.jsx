@@ -74,6 +74,22 @@ export default function CaseDetail({ token, user, onNavigate, showNotification, 
     }
   };
 
+  const handleDownloadDoc = async (docId) => {
+    try {
+      showNotification('Generating secure link...', 'info');
+      const res = await api.getDocumentDownloadUrl(token, docId);
+      if (res && res.url) {
+        window.open(res.url, '_blank');
+        showNotification('Opening document...', 'success');
+      } else {
+        showNotification('Failed to generate download link', 'error');
+      }
+    } catch (err) {
+      console.error('Download error:', err);
+      showNotification('Error opening document', 'error');
+    }
+  };
+
   const handleDocAction = async (docId, newStatus, reason = '') => {
     try {
       setUpdatingDocId(docId);
@@ -225,9 +241,21 @@ export default function CaseDetail({ token, user, onNavigate, showNotification, 
                 return (
                   <div key={doc.id} style={styles.docRow}>
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flex: 1, minWidth: 0 }}>
-                      <div style={styles.docIconWrap}>📁</div>
+                      <div 
+                        style={{ ...styles.docIconWrap, cursor: 'pointer' }}
+                        onClick={() => handleDownloadDoc(doc.id)}
+                        title="Download Document"
+                      >
+                        📁
+                      </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <h4 style={styles.docName}>{doc.name}</h4>
+                        <h4 
+                          style={{ ...styles.docName, cursor: 'pointer', color: '#2563EB', textDecoration: 'underline' }}
+                          onClick={() => handleDownloadDoc(doc.id)}
+                          title="Download/Open Document"
+                        >
+                          {doc.name}
+                        </h4>
                         <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', display: 'block' }}>
                           Size: {doc.size || '1.2 MB'} • Category: <strong style={{ color: 'var(--primary-dark)' }}>{doc.category}</strong>
                         </span>

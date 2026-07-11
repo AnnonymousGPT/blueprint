@@ -91,6 +91,10 @@ export const api = {
     });
   },
 
+  getDocumentDownloadUrl: async (token, docId) => {
+    return await fetchWithAuth(`/api/documents/${docId}/download`, token);
+  },
+
   getMessages: async (token, otherUserId) => {
     return await fetchWithAuth(`/api/messages/${otherUserId}`, token);
   },
