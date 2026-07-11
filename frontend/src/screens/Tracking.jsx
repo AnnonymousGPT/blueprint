@@ -83,13 +83,13 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
   const getSubtaskDetails = (progress) => {
     if (progress >= 80) {
       return {
-        task: `${expert.name} is wrapping up the draft.`,
+        task: `${expert?.name || 'Your advisor'} is wrapping up the draft.`,
         eta: "Today, before 5:00 PM"
       };
     }
     if (progress >= 40) {
       return {
-        task: `${expert.name} is checking your files.`,
+        task: `${expert?.name || 'Your advisor'} is checking your files.`,
         eta: "Tomorrow, before noon"
       };
     }
@@ -99,7 +99,41 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
     };
   };
 
-  const details = getSubtaskDetails(activeRequest.progress);
+  const getTimelineSteps = (status, progressPercent) => {
+    const steps = [
+      { key: 'NEW', title: 'Request Submitted', desc: 'Case received by Blueprint.' },
+      { key: 'EXPERT_ASSIGNED', title: 'Expert Assigned', desc: 'A dedicated advisor is on your case.' },
+      { key: 'DOCUMENTS_PENDING', title: 'Documents Verification', desc: 'Please upload files for review.' },
+      { key: 'IN_PROGRESS', title: 'Work in Progress', desc: 'Your advisor is preparing drafts.' },
+      { key: 'REVIEW', title: 'Draft Review', desc: 'Approve or comment on ready drafts.' },
+      { key: 'COMPLETED', title: 'Filing Completed', desc: 'Case successfully submitted and closed.' }
+    ];
+
+    const currentIdx = steps.findIndex(s => s.key === status);
+    
+    return steps.map((s, idx) => {
+      let stepStatus = 'pending';
+      if (status === 'COMPLETED') {
+        stepStatus = 'completed';
+      } else if (idx < currentIdx) {
+        stepStatus = 'completed';
+      } else if (idx === currentIdx) {
+        stepStatus = 'active';
+      } else {
+        stepStatus = 'pending';
+      }
+
+      return {
+        title: s.title,
+        desc: s.desc,
+        status: stepStatus
+      };
+    });
+  };
+
+  const progress = activeRequest.progressPercent !== undefined ? activeRequest.progressPercent : (activeRequest.progress !== undefined ? activeRequest.progress : 0);
+  const timeline = activeRequest.timeline || getTimelineSteps(activeRequest.status, progress);
+  const details = getSubtaskDetails(progress);
 
   // Mocked chat logic removed in favor of ChatBox component
   
@@ -323,12 +357,12 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
               fill="none" 
               stroke="#0ea5e9" 
               strokeWidth="3.2" 
-              strokeDasharray={`${activeRequest.progress}, 100`} 
+              strokeDasharray={`${progress}, 100`} 
               style={{ transition: 'stroke-dasharray 1s ease-in-out', strokeLinecap: 'round' }}
             />
           </svg>
           <span style={{ position: 'absolute', fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-accent)' }}>
-            {activeRequest.progress}%
+            {progress}%
           </span>
         </div>
 
@@ -454,10 +488,10 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
 
         <div className="card" style={{ padding: '16px', borderRadius: '20px', border: '1.5px solid rgba(226, 232, 240, 0.8)', backgroundColor: '#FFFFFF' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
-            {activeRequest.timeline.map((step, idx) => {
+            {timeline.map((step, idx) => {
               // Timeline vertical line connection logic
-              const isLast = idx === activeRequest.timeline.length - 1;
-              const nextStep = !isLast ? activeRequest.timeline[idx + 1] : null;
+              const isLast = idx === timeline.length - 1;
+              const nextStep = !isLast ? timeline[idx + 1] : null;
               
               let lineColor = '#E2E8F0'; // Default line color
               if (nextStep) {
