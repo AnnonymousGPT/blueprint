@@ -16,8 +16,21 @@ export const createRequest = async (req: AuthenticatedRequest, res: Response) =>
         status: (assignedExpertId ? 'EXPERT_ASSIGNED' : 'NEW') as any,
       } as any
     });
+
+    // Auto-associate any previously unassociated uploaded documents of this user with the new request
+    await prisma.document.updateMany({
+      where: {
+        userId: req.user!.id,
+        requestId: null
+      },
+      data: {
+        requestId: request.id
+      }
+    });
+
     return res.status(201).json({ success: true, data: request });
-  } catch (error) {
+  } catch (error: any) {
+    console.error('createRequest failed:', error?.message);
     return res.status(500).json({ error: 'Failed to create request' });
   }
 };
