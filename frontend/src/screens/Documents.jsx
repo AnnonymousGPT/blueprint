@@ -1202,11 +1202,13 @@ export default function Documents({ documents, onUploadSuccess, addNotification,
                   {/* Main Row */}
                   <div 
                     onClick={() => {
-                      const matchedRealDoc = documents.find(d => d.category === item.category);
+                      const matchedRealDoc = documents.find(d => d.category === item.dbCategory);
                       if (matchedRealDoc) {
                         setPreviewDoc(matchedRealDoc);
                       } else {
-                        addNotification(`No active file found for ${docTitle}. Please upload first.`, 'info');
+                        setUploadCategory(item.category);
+                        setShowUploadOptions(true);
+                        addNotification(`Please capture/select your ${docTitle} file.`, 'info');
                       }
                     }}
                     style={{ display: 'flex', alignItems: 'center', width: '100%', cursor: 'pointer' }}
