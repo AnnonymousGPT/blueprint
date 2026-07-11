@@ -14,7 +14,7 @@ export default function Login({ onLogin, showNotification }) {
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
+      if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION')) {
         if (Capacitor.isNativePlatform()) {
           await Browser.close().catch(() => {});
         }

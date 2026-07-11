@@ -151,7 +151,8 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
 
     // Listen for Supabase OAuth callbacks
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
+      // INITIAL_SESSION fires on web after PKCE code exchange (page reload)
+      if (session?.user && (event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'INITIAL_SESSION')) {
         // Close browser on native (after OAuth redirect)
         if (Capacitor.isNativePlatform()) {
           await Browser.close().catch(() => {});
