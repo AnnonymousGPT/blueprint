@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from 'react';
-import ChatBox from '../components/ChatBox';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2.2 }) {
@@ -97,6 +96,12 @@ function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2.2 }) {
           <line x1="10" y1="9" x2="8" y2="9" />
         </svg>
       );
+    case 'chevronRight':
+      return (
+        <svg {...common}>
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      );
     case 'chevronDown':
       return (
         <svg {...common}>
@@ -127,7 +132,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
   const [loading, setLoading] = useState(true);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
-  // V3 Subview Routing
+  // V4 Subview Routing
   const [activeSubView, setActiveSubView] = useState('workspace'); // 'workspace' | 'timeline' | 'documents' | 'invoices' | 'consultations'
   const [consultationExpanded, setConsultationExpanded] = useState(false);
 
@@ -142,7 +147,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Faster skeleton shimmer to match V3 speed
+    // Faster skeleton shimmer to match V3/V4 speed
     const timer = setTimeout(() => setLoading(false), 400);
 
     return () => {
@@ -173,20 +178,6 @@ export default function Tracking({ requests = [], documents = [], selectedReques
     }
   };
 
-  // Analytics event logger
-  const trackEvent = (eventName, payload = {}) => {
-    console.log(`[Analytics] Event: ${eventName}`, payload);
-    if (window.gtag) {
-      window.gtag('event', eventName, payload);
-    }
-  };
-
-  useEffect(() => {
-    if (activeRequest) {
-      trackEvent('workspace_viewed', { request_id: activeRequest.id, status: activeRequest.status });
-    }
-  }, [activeRequest]);
-
   const handleSelectRequest = (reqId) => {
     playHaptic();
     setManualRequestId(reqId);
@@ -195,23 +186,19 @@ export default function Tracking({ requests = [], documents = [], selectedReques
   const handleAction = (type) => {
     playHaptic();
     if (type === 'Chat') {
-      trackEvent('expert_contacted', { request_id: activeRequest.id });
       setActiveTab('chat');
     } else {
-      trackEvent('expert_call_dialed', { request_id: activeRequest.id });
       addNotification(`Calling CA ${activeRequest?.assignedExpert?.user?.name || 'Advisor'}...`, 'info');
     }
   };
 
   const handleDownloadInvoice = () => {
     playHaptic();
-    trackEvent('invoice_downloaded', { request_id: activeRequest.id });
     addNotification('Downloading GST tax invoice PDF...', 'success');
   };
 
   const handleJoinConsultation = (booking) => {
     playHaptic('medium');
-    trackEvent('consultation_joined', { booking_id: booking.id, type: booking.type });
     addNotification(`Joining secure ${booking.type.toLowerCase()} consultation link...`, 'success');
   };
 
@@ -327,7 +314,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
           No Active Filings
         </h3>
         <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45, marginBottom: 16 }}>
-          You don't have any ongoing compliance filings. Start a dynamic tax match to partner with an advisor.
+          You don't have any ongoing compliance filings.
         </p>
         <button
           type="button"
@@ -390,7 +377,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
             <Icon name="back" size={20} />
           </button>
           <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-            Filing Steps Timeline
+            Filing Stages Timeline
           </h2>
         </div>
 
@@ -474,7 +461,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
             <Icon name="back" size={20} />
           </button>
           <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-            Filing Documents checklist
+            Filing Documents Checklist
           </h2>
         </div>
 
@@ -701,7 +688,6 @@ export default function Tracking({ requests = [], documents = [], selectedReques
         bg: 'linear-gradient(135deg, #7f1d1d 0%, #450a0a 100%)',
         accentColor: '#fca5a5',
         action: () => {
-          trackEvent('primary_action_clicked', { request_id: activeRequest.id, action_type: 'DOCUMENTS_REJECTED' });
           setActiveSubView('documents');
         }
       };
@@ -718,7 +704,6 @@ export default function Tracking({ requests = [], documents = [], selectedReques
         bg: 'linear-gradient(135deg, #1e3a8a 0%, #172554 100%)',
         accentColor: '#93c5fd',
         action: () => {
-          trackEvent('primary_action_clicked', { request_id: activeRequest.id, action_type: 'DOCUMENTS_PENDING' });
           setActiveSubView('documents');
         }
       };
@@ -734,7 +719,6 @@ export default function Tracking({ requests = [], documents = [], selectedReques
         bg: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)',
         accentColor: '#5eead4',
         action: () => {
-          trackEvent('primary_action_clicked', { request_id: activeRequest.id, action_type: 'REVIEW_DRAFT' });
           addNotification('Opening final tax declaration draft return...', 'info');
         }
       };
@@ -751,7 +735,6 @@ export default function Tracking({ requests = [], documents = [], selectedReques
         bg: 'linear-gradient(135deg, #1f2937 0%, #111827 100%)',
         accentColor: '#cbd5e1',
         action: () => {
-          trackEvent('primary_action_clicked', { request_id: activeRequest.id, action_type: 'JOIN_CALL' });
           handleJoinConsultation(nextBooking);
         }
       };
@@ -766,7 +749,6 @@ export default function Tracking({ requests = [], documents = [], selectedReques
       bg: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
       accentColor: '#94a3b8',
       action: () => {
-        trackEvent('primary_action_clicked', { request_id: activeRequest.id, action_type: 'VIEW_TIMELINE' });
         setActiveSubView('timeline');
       }
     };
@@ -774,7 +756,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
 
   const action = getRequiredAction();
 
-  // MAIN WORKSPACE VIEW V3 (MAX 5 SECTIONS, NO SCROLL)
+  // MAIN WORKSPACE VIEW V4 (MAX 5 SECTIONS, NO SCROLL)
   return (
     <div
       style={{
@@ -817,7 +799,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
         </button>
 
         <h2 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 900, color: 'var(--text-primary)', textAlign: 'center' }}>
-          Workspace V3
+          Workspace V4
         </h2>
 
         <div style={{
@@ -828,7 +810,8 @@ export default function Tracking({ requests = [], documents = [], selectedReques
           color: '#10b981',
           fontSize: '0.62rem',
           fontWeight: 800,
-          whiteSpace: 'nowrap'
+          whiteSpace: 'nowrap',
+          fontFamily: 'monospace'
         }}>
           ID: {activeRequest.id.slice(-6).toUpperCase()}
         </div>
@@ -897,9 +880,9 @@ export default function Tracking({ requests = [], documents = [], selectedReques
               textTransform: 'uppercase',
               width: 'fit-content'
             }}>
-              Active Task
+              Required Step
             </span>
-            <h3 style={{ fontSize: '1rem', fontWeight: 950, color: '#ffffff', margin: 0, lineHeight: 1.2 }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 950, color: '#ffffff', margin: 0, lineHeight: 1.25 }}>
               {action.title}
             </h3>
           </div>
@@ -907,7 +890,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
             <Icon name={action.icon} size={28} strokeWidth={1.8} />
           </div>
         </div>
-        <p style={{ fontSize: '0.7rem', color: '#cbd5e1', margin: 0, lineHeight: 1.3, fontWeight: 500 }}>
+        <p style={{ fontSize: '0.68rem', color: '#cbd5e1', margin: 0, lineHeight: 1.3, fontWeight: 500 }}>
           {action.desc}
         </p>
         <button
@@ -960,37 +943,37 @@ export default function Tracking({ requests = [], documents = [], selectedReques
         tabIndex={0}
         aria-label={`Filing progress is ${activeRequest.progressPercent || 30}% complete`}
       >
-        <div style={{ position: 'relative', width: 50, height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="50" height="50" viewBox="0 0 36 36">
-            <circle cx="18" cy="18" r="16" fill="none" stroke="var(--border-color)" strokeWidth="3" />
+        <div style={{ position: 'relative', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="48" height="48" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="16" fill="none" stroke="var(--border-color)" strokeWidth="3.2" />
             <circle
               cx="18"
               cy="18"
               r="16"
               fill="none"
               stroke="var(--primary)"
-              strokeWidth="3.2"
+              strokeWidth="3.5"
               strokeDasharray={`${activeRequest.progressPercent || 30}, 100`}
               strokeLinecap="round"
               style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%', transition: 'stroke-dasharray 0.6s ease' }}
             />
           </svg>
-          <span style={{ position: 'absolute', fontSize: '0.78rem', fontWeight: 950, color: 'var(--text-primary)' }}>
+          <span style={{ position: 'absolute', fontSize: '0.74rem', fontWeight: 950, color: 'var(--text-primary)' }}>
             {activeRequest.progressPercent || 30}%
           </span>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h4 style={{ margin: '0', fontSize: '0.8rem', fontWeight: 900, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          <h4 style={{ margin: '0', fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
             {activeRequest.serviceName}
           </h4>
           <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-            Stage: <strong style={{ color: 'var(--primary)' }}>{activeRequest.status}</strong> • ETA: 2d
+            Stage: <strong style={{ color: 'var(--primary)' }}>{activeRequest.status?.replace('_', ' ')}</strong> · ETA: 2d
           </p>
         </div>
         <Icon name="chevronRight" size={14} color="var(--text-secondary)" />
       </div>
 
-      {/* SECTION 3: ASSIGNED EXPERT CARD (CLICK TRIGGER REDIRECTS TO CHAT TAB) */}
+      {/* SECTION 3: ASSIGNED EXPERT CARD (DIRECT CHAT Short) */}
       {activeRequest.assignedExpert ? (
         <div
           className="card"
@@ -1016,7 +999,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
               <img src={activeRequest.assignedExpert.user?.photo || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=80&q=80'} alt={activeRequest.assignedExpert.user?.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 900, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
                 {activeRequest.assignedExpert.user?.name || 'Chartered Accountant'}
                 <span style={{
                   width: 11,
@@ -1032,7 +1015,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
                 }}>✓</span>
               </div>
               <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', fontWeight: 500, marginTop: 1 }}>
-                {activeRequest.assignedExpert.specialization || 'Taxation Expert'} • SLA: &lt;2h
+                {activeRequest.assignedExpert.specialization || 'Taxation Expert'} · SLA: &lt;2h
               </div>
             </div>
           </div>
@@ -1044,7 +1027,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
             <Icon name="phone" size={16} color="var(--primary)" />
           </div>
           <div>
-            <h4 style={{ margin: 0, fontSize: '0.8rem', fontWeight: 900, color: 'var(--text-primary)' }}>Assigning Advisor</h4>
+            <h4 style={{ margin: 0, fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-primary)' }}>Assigning Advisor</h4>
             <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
               We will match a certified advisor shortly.
             </p>
@@ -1053,7 +1036,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
       )}
 
       {/* SECTION 4: UPCOMING CONSULTATION CARD (CLICK TRIGGER EXPANDS DETAIL CONTROLS) */}
-      {activeBookings.length > 0 && (
+      {activeBookings.length > 0 ? (
         <div
           className="card"
           style={{
@@ -1155,6 +1138,16 @@ export default function Tracking({ requests = [], documents = [], selectedReques
               )}
             </div>
           ))}
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 12, borderRadius: 20, border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: 10, width: '100%', boxSizing: 'border-box' }}>
+          <div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: 'rgba(59,130,246,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="calendar" size={16} color="var(--primary)" />
+          </div>
+          <div>
+            <h4 style={{ margin: 0, fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-primary)' }}>No Consultation Call</h4>
+            <p style={{ margin: '2px 0 0', fontSize: '0.62rem', color: 'var(--text-secondary)' }}>Configure calls on need basis.</p>
+          </div>
         </div>
       )}
 
