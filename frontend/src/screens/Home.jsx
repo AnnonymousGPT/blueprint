@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
 function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2.2 }) {
@@ -256,6 +256,70 @@ export default function Home({
     return matchCat && matchQuery;
   });
 
+  // Dynamic Smart Context Compiler
+  const smartContextData = useMemo(() => {
+    if (loading) return null;
+    const activeReq = recentRequests[0];
+    if (!activeReq) {
+      return {
+        title: 'Portfolio secured',
+        desc: 'Active advisor matches monitored 24/7',
+        icon: 'shield',
+        color: '#6366f1',
+        bg: 'rgba(99, 102, 241, 0.05)',
+        border: '1px solid rgba(99, 102, 241, 0.15)'
+      };
+    }
+
+    // 1. Pending docs
+    if (activeReq.status === 'DOCUMENTS_PENDING') {
+      const pendingCount = (activeReq.documents || []).filter(d => d.status === 'PENDING_UPLOAD' || d.status === 'Rejected').length || 3;
+      return {
+        title: `${pendingCount} documents pending`,
+        desc: 'Estimated upload time: 2 minutes',
+        icon: 'upload',
+        color: '#f59e0b',
+        bg: 'rgba(245, 158, 11, 0.05)',
+        border: '1px solid rgba(245, 158, 11, 0.15)'
+      };
+    }
+
+    // 2. Scheduled consultation call tomorrow/today
+    const activeCall = (activeReq.bookings || []).find(b => b.status === 'CONFIRMED' || b.status === 'SCHEDULED');
+    if (activeCall) {
+      return {
+        title: 'Consultation tomorrow',
+        desc: `Scheduled at ${activeCall.time || '11:30 AM'}`,
+        icon: 'calendar',
+        color: '#3b82f6',
+        bg: 'rgba(59, 130, 246, 0.05)',
+        border: '1px solid rgba(59, 130, 246, 0.15)'
+      };
+    }
+
+    // 3. Completed return
+    if (activeReq.status === 'COMPLETED') {
+      return {
+        title: 'ITR successfully filed',
+        desc: 'Acknowledgement receipt available',
+        icon: 'check',
+        color: '#10b981',
+        bg: 'rgba(16, 185, 129, 0.05)',
+        border: '1px solid rgba(16, 185, 129, 0.15)'
+      };
+    }
+
+    // Default catch-all
+    return {
+      title: 'Portfolio secured',
+      desc: 'Active advisor matches monitored 24/7',
+      icon: 'shield',
+      color: '#6366f1',
+      bg: 'rgba(99, 102, 241, 0.05)',
+      border: '1px solid rgba(99, 102, 241, 0.15)'
+    };
+  }, [loading, recentRequests]);
+
   // LOADING SHIMMER STATE
   if (state.type === 'LOADING') {
     return (
@@ -267,11 +331,7 @@ export default function Home({
         <div className="skeleton-container" style={{ height: 110, borderRadius: 20, width: '100%' }} />
         <div className="skeleton-container" style={{ height: 95, borderRadius: 20, width: '100%' }} />
         <div className="skeleton-container" style={{ height: 70, borderRadius: 16, width: '100%' }} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-          <div className="skeleton-container" style={{ height: 44, borderRadius: 10 }} />
-          <div className="skeleton-container" style={{ height: 44, borderRadius: 10 }} />
-          <div className="skeleton-container" style={{ height: 44, borderRadius: 10 }} />
-        </div>
+        <div className="skeleton-container" style={{ height: 60, borderRadius: 16, width: '100%' }} />
       </div>
     );
   }
@@ -298,7 +358,7 @@ export default function Home({
             {isGuest ? 'Welcome' : `Hi ${userProfile.name.split(' ')[0]}`} 👋
           </h1>
           <p style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', fontWeight: 600, margin: '2px 0 0 0' }}>
-            Fintech Wealth & Compliance Workspace
+            Wealth & Compliance
           </p>
         </div>
 
@@ -372,7 +432,7 @@ export default function Home({
         </div>
       </div>
 
-      {/* SECTION 1: REQUIRED ACTION CARD (EXACTLY ONE MAIN CTA BUTTON) */}
+      {/* SECTION 1: TODAY'S PRIORITY CARD (EXACTLY ONE MAIN CTA BUTTON) */}
       {state.type === 'ACTION_REQUIRED' ? (
         <div
           className="screen-hero animate-scale-in"
@@ -401,7 +461,7 @@ export default function Home({
                 textTransform: 'uppercase',
                 width: 'fit-content'
               }}>
-                Required Action
+                Today's Priority
               </span>
               <h2 style={{ fontSize: '1.05rem', fontWeight: 950, color: '#ffffff', margin: 0, lineHeight: 1.25 }}>
                 {state.title}
@@ -447,7 +507,7 @@ export default function Home({
           className="screen-hero animate-scale-in"
           style={{
             padding: '14px 16px',
-            background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)',
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
             border: '1px solid rgba(255, 255, 255, 0.08)',
             borderRadius: 20,
             display: 'flex',
@@ -460,28 +520,28 @@ export default function Home({
             fontSize: '0.54rem',
             fontWeight: 800,
             background: 'rgba(255, 255, 255, 0.12)',
-            color: '#5eead4',
+            color: '#cbd5e1',
             padding: '2px 6px',
             borderRadius: 99,
             textTransform: 'uppercase',
             width: 'fit-content'
           }}>
-            Status Update
+            Today's Status
           </span>
           <h2 style={{ fontSize: '1.05rem', fontWeight: 950, color: '#ffffff', margin: 0, lineHeight: 1.25 }}>
-            {state.type === 'EMPTY' ? 'Start Your Compliance Path' : 'All Filings Completed'}
+            {state.type === 'EMPTY' ? 'Start Compliance Path' : 'All Filings Completed'}
           </h2>
-          <p style={{ fontSize: '0.72rem', color: '#ccfbf1', margin: 0, lineHeight: 1.3, fontWeight: 500 }}>
+          <p style={{ fontSize: '0.72rem', color: '#cbd5e1', margin: 0, lineHeight: 1.3, fontWeight: 500 }}>
             {state.type === 'EMPTY'
-              ? 'Partner with a certified Chartered Accountant to manage tax filing processes.'
-              : 'Our advisor partners have verified and completed all filing packages.'}
+              ? 'Match with a certified CA Partner to file taxes and secure subsidy benefits.'
+              : 'Our expert advisor partners have verified and completed all filings.'}
           </p>
           <button
             type="button"
             onClick={() => {
               playHaptic('medium');
               if (state.type === 'EMPTY') {
-                onSelectService('itr');
+                setShowServiceSearch(true);
               } else {
                 onViewAllRequests();
               }
@@ -489,7 +549,7 @@ export default function Home({
             style={{
               width: '100%',
               backgroundColor: '#ffffff',
-              color: '#0d9488',
+              color: '#0f172a',
               fontWeight: 800,
               borderRadius: 12,
               padding: '10px',
@@ -503,13 +563,13 @@ export default function Home({
               gap: 4
             }}
           >
-            {state.type === 'EMPTY' ? 'Book Consultation' : 'View Filings Log'}
-            <Icon name="chevronRight" size={12} color="#0d9488" strokeWidth={3} />
+            {state.type === 'EMPTY' ? 'Browse Services' : 'View Case History'}
+            <Icon name="chevronRight" size={12} color="#0f172a" strokeWidth={3} />
           </button>
         </div>
       )}
 
-      {/* SECTION 2: CURRENT CASE CARD (NO BUTTON - ENTIRE CARD TAP TRIGGER) */}
+      {/* SECTION 2: CURRENT CASE SNAPSHOT (NO CTA BUTTON, CARD TAP ONLY) */}
       {!isGuest && recentRequests.length > 0 ? (
         recentRequests.slice(0, 1).map((req) => (
           <div
@@ -582,7 +642,6 @@ export default function Home({
           </div>
         ))
       ) : (
-        /* Section 2 Alt: Quick Info card */
         <div
           className="card"
           style={{
@@ -591,14 +650,15 @@ export default function Home({
             border: '1px solid var(--border-color)',
             fontSize: '0.72rem',
             color: 'var(--text-secondary)',
-            fontWeight: 500
+            fontWeight: 500,
+            textAlign: 'center'
           }}
         >
-          No active case tracker. Click quick actions below to register a new service.
+          No active filings tracked.
         </div>
       )}
 
-      {/* SECTION 3: ASSIGNED EXPERT CARD (ENTIRE CARD CLICK-THROUGH TO CHAT) */}
+      {/* SECTION 3: YOUR ADVISOR TODAY (NO BUTTON, TAP REDIRECTS TO CHAT) */}
       {!isGuest && (
         assignedExpert ? (
           <div
@@ -635,10 +695,10 @@ export default function Home({
               </div>
               <div style={{ minWidth: 0 }}>
                 <h3 style={{ fontSize: '0.8rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
-                  {assignedExpert.user?.name || 'Chartered Accountant'}
+                  CA {assignedExpert.user?.name || 'Chartered Accountant'}
                 </h3>
                 <span style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', display: 'block', marginTop: 1, fontWeight: 500 }}>
-                  {assignedExpert.specialization || 'Tax Advisor'} • SLA: &lt;2h
+                  {assignedExpert.specialization || 'Tax Advisor'} · Response: &lt;2h
                 </span>
               </div>
             </div>
@@ -654,99 +714,54 @@ export default function Home({
               display: 'flex',
               alignItems: 'center',
               gap: 10,
-              border: '1px solid var(--border-color)'
+              border: '1px solid var(--border-color)',
+              width: '100%',
+              boxSizing: 'border-box'
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: '50%', backgroundColor: 'rgba(13, 148, 136, 0.08)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, borderRadius: '50%', backgroundColor: 'rgba(13, 148, 136, 0.08)', flexShrink: 0 }}>
               <Icon name="phone" size={16} color="var(--primary)" />
             </div>
             <div>
-              <h3 style={{ fontSize: '0.8rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>CA Partner Matching</h3>
+              <h3 style={{ fontSize: '0.8rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>CA Partner Match</h3>
               <p style={{ fontSize: '0.64rem', color: 'var(--text-secondary)', margin: '2px 0 0', fontWeight: 500 }}>
-                We are assigning a compliance advisor.
+                Assigning a certified expert advisor.
               </p>
             </div>
           </div>
         )
       )}
 
-      {/* SECTION 4: QUICK ACTIONS ROW (ICON ACTION TARGETS) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-        <button
-          type="button"
-          onClick={() => {
-            playHaptic();
-            onOpenDocuments();
-          }}
+      {/* SECTION 4: SMART CONTEXT CARD (DYNAMIC COMPILATION DETAILS) */}
+      {smartContextData && (
+        <div
+          className="card"
           style={{
+            padding: '12px 14px',
+            borderRadius: 20,
             display: 'flex',
-            flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
-            gap: 4,
-            backgroundColor: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 12,
-            padding: '10px 6px',
-            cursor: 'pointer',
-            minHeight: 62,
-            boxShadow: 'var(--shadow-sm)'
+            gap: 12,
+            background: smartContextData.bg,
+            border: smartContextData.border,
+            boxShadow: 'var(--shadow-sm)',
+            width: '100%',
+            boxSizing: 'border-box'
           }}
         >
-          <Icon name="fileText" size={18} color="var(--primary)" />
-          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-primary)' }}>Documents</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            playHaptic();
-            onSupportClick();
-          }}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 4,
-            backgroundColor: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 12,
-            padding: '10px 6px',
-            cursor: 'pointer',
-            minHeight: 62,
-            boxShadow: 'var(--shadow-sm)'
-          }}
-        >
-          <Icon name="mail" size={18} color="var(--primary)" />
-          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-primary)' }}>Messages</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            playHaptic();
-            setShowServiceSearch(true);
-          }}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 4,
-            backgroundColor: 'var(--bg-card)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 12,
-            padding: '10px 6px',
-            cursor: 'pointer',
-            minHeight: 62,
-            boxShadow: 'var(--shadow-sm)'
-          }}
-        >
-          <Icon name="plus" size={18} color="var(--primary)" />
-          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-primary)' }}>New Service</span>
-        </button>
-      </div>
+          <div style={{ color: smartContextData.color, display: 'flex', flexShrink: 0 }}>
+            <Icon name={smartContextData.icon} size={22} color={smartContextData.color} />
+          </div>
+          <div>
+            <h4 style={{ margin: 0, fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+              {smartContextData.title}
+            </h4>
+            <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
+              {smartContextData.desc}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Services Search Modal bottom sheet */}
       {showServiceSearch && (
