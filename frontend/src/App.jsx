@@ -61,6 +61,7 @@ export default function App() {
   });
   const [trackingRequestId, setTrackingRequestId] = useState(null); // highlights specific request in tracking
   const [forceShowLogin, setForceShowLogin] = useState(false); // forces login screen overlay
+  const [showDocumentsOverlay, setShowDocumentsOverlay] = useState(false); // controls documents full-view overlay
   const [showSplash, setShowSplash] = useState(() => {
     return !localStorage.getItem('accessToken');
   });
@@ -826,6 +827,24 @@ export default function App() {
       );
     }
 
+    if (showDocumentsOverlay) {
+      return (
+        <Documents 
+          requests={simulateEmptyState ? [] : requests}
+          documents={simulateEmptyState ? [] : documents}
+          onUploadSuccess={handleUploadSuccess}
+          addNotification={addNotification}
+          setActiveTab={(tab) => {
+            if (tab === 'home') setShowDocumentsOverlay(false);
+            else {
+              setShowDocumentsOverlay(false);
+              setActiveTab(tab);
+            }
+          }}
+        />
+      );
+    }
+
     // Shell screens driven by Bottom Navigation Tabs
     switch (activeTab) {
       case 'home':
@@ -843,6 +862,9 @@ export default function App() {
             onBellClick={() => setShowNotificationsInbox(true)}
             unreadCount={notificationsHistory.filter(n => !n.read).length}
             onOpenProfile={() => setActiveTab('profile')}
+            onOpenDocuments={() => setShowDocumentsOverlay(true)}
+            onSupportClick={() => setActiveTab('chat')}
+            setActiveTab={setActiveTab}
           />
         );
       case 'requests':
@@ -857,15 +879,20 @@ export default function App() {
             user={user}
           />
         );
-      case 'documents':
+      case 'chat':
+        const assignedExpert = !simulateEmptyState && requests.find(r => r.assignedExpert)?.assignedExpert;
+        const chatPartnerId = assignedExpert?.user?.id || assignedExpert?.userId || 'support';
+        const chatPartnerName = assignedExpert?.user?.name || 'Blueprint Support';
         return (
-          <Documents 
-            requests={simulateEmptyState ? [] : requests}
-            documents={simulateEmptyState ? [] : documents}
-            onUploadSuccess={handleUploadSuccess}
-            addNotification={addNotification}
-            setActiveTab={setActiveTab}
-          />
+          <div style={{ position: 'relative', height: '100%' }}>
+            <ChatBox 
+              currentUserId={user?.id || 'guest'}
+              otherUserId={chatPartnerId}
+              otherUserName={chatPartnerName}
+              onClose={() => setActiveTab('home')}
+              addNotification={addNotification}
+            />
+          </div>
         );
       case 'profile':
         return (
