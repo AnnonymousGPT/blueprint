@@ -1,863 +1,803 @@
-import { useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import ChatBox from '../components/ChatBox';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
-export default function Tracking({ requests, documents = [], selectedRequestId, onBackToHome, setActiveTab, addNotification, user }) {
-  const [manualRequestId, setManualRequestId] = useState(null);
-  const resolvedRequestId = selectedRequestId || manualRequestId;
-  const activeRequest = requests.find((request) => request.id === resolvedRequestId) || requests[0];
+function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2.2 }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: color,
+    strokeWidth,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': true
+  };
+
+  switch (name) {
+    case 'back':
+      return (
+        <svg {...common}>
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+      );
+    case 'chat':
+      return (
+        <svg {...common}>
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </svg>
+      );
+    case 'phone':
+      return (
+        <svg {...common}>
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+        </svg>
+      );
+    case 'video':
+      return (
+        <svg {...common}>
+          <polygon points="23 7 16 12 23 17 23 7" />
+          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+        </svg>
+      );
+    case 'download':
+      return (
+        <svg {...common}>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+      );
+    case 'info':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+      );
+    case 'check':
+      return (
+        <svg {...common}>
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      );
+    case 'alert':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="10" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+      );
+    case 'plus':
+      return (
+        <svg {...common}>
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
+
+export default function Tracking({ requests = [], documents = [], selectedRequestId, onBackToHome, setActiveTab, addNotification, user }) {
+  const [manualRequestId, setManualRequestId] = useState(() => {
+    return localStorage.getItem('active_workspace_request_id') || null;
+  });
+  
+  const [loading, setLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [rescheduleData, setRescheduleData] = useState({ date: '', time: '' });
   const [isRescheduling, setIsRescheduling] = useState(false);
   
-  // Interactive Live Chat State
   const [showChat, setShowChat] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const [chatMessages, setChatMessages] = useState([
-    { id: 1, sender: 'expert', text: "Hello Akash, I have started reviewing your taxation fields. Everything looks clean so far.", time: "10:32 AM", read: true },
-    { id: 2, sender: 'user', text: "Great. Did you check the Crypto gains declaration too?", time: "10:35 AM", read: true },
-    { id: 3, sender: 'expert', text: "Yes, I am verifying that against your transaction statements. I will let you know if I need any more document uploads.", time: "10:36 AM", read: true }
-  ]);
-  const [inputText, setInputText] = useState('');
 
-  if (!activeRequest) {
-    return (
-      <div style={{ padding: '24px 0', textAlign: 'center', backgroundColor: 'var(--bg-phone)', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-        <h3>No active requests found</h3>
-        <button className="btn btn-primary" onClick={onBackToHome} style={{ marginTop: '16px' }}>Back to home</button>
-      </div>
-    );
-  }
+  // Sync network state
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
-  const expert = activeRequest.assignedExpert;
+    // Initial Loading simulator
+    const timer = setTimeout(() => setLoading(false), 500);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearTimeout(timer);
+    };
+  }, []);
+
+  const resolvedRequestId = selectedRequestId || manualRequestId;
+  const activeRequest = useMemo(() => {
+    return requests.find((request) => request.id === resolvedRequestId) || requests[0];
+  }, [requests, resolvedRequestId]);
+
+  // Persist selected Request ID to preserve workspace across refreshes
+  useEffect(() => {
+    if (activeRequest?.id) {
+      localStorage.setItem('active_workspace_request_id', activeRequest.id);
+    }
+  }, [activeRequest]);
+
+  // Safe Capacitor haptic triggers
+  const playHaptic = async () => {
+    try {
+      await Haptics.impact({ style: ImpactStyle.Light });
+    } catch (e) {
+      if (navigator.vibrate) navigator.vibrate(30);
+    }
+  };
+
+  // Analytics event logger
+  const trackEvent = (eventName, payload = {}) => {
+    console.log(`[Analytics] Event: ${eventName}`, payload);
+    if (window.gtag) {
+      window.gtag('event', eventName, payload);
+    }
+  };
+
+  useEffect(() => {
+    if (activeRequest) {
+      trackEvent('workspace_viewed', { request_id: activeRequest.id, status: activeRequest.status });
+    }
+  }, [activeRequest]);
+
+  const handleSelectRequest = (reqId) => {
+    playHaptic();
+    setManualRequestId(reqId);
+  };
 
   const handleAction = (type) => {
+    playHaptic();
     if (type === 'Chat') {
+      trackEvent('expert_chat_opened', { request_id: activeRequest.id });
       setShowChat(true);
     } else {
-      addNotification(`Calling ${expert?.user?.name || 'Assigned Advisor'} via secure proxy dialer...`, 'info');
+      trackEvent('expert_call_dialed', { request_id: activeRequest.id });
+      addNotification(`Calling CA ${activeRequest?.assignedExpert?.user?.name || 'Advisor'}...`, 'info');
     }
   };
 
-  const handleDownload = (filename) => {
-    addNotification(`Downloading ${filename}...`, 'success');
+  const handleDownloadInvoice = () => {
+    playHaptic();
+    trackEvent('invoice_downloaded', { request_id: activeRequest.id });
+    addNotification('Downloading GST tax invoice PDF...', 'success');
   };
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
-
-    const newMsg = {
-      id: chatMessages.length + 1,
-      sender: 'user',
-      text: inputText,
-      time: "Just Now",
-      read: false
-    };
-
-    setChatMessages(prev => [...prev, newMsg]);
-    setInputText('');
-    setIsTyping(true);
-
-    // Simulate expert auto-reply
-    setTimeout(() => {
-      setIsTyping(false);
-      setChatMessages(prev => [
-        ...prev,
-        {
-          id: prev.length + 1,
-          sender: 'expert',
-          text: "Received! Let me verify this and get back to you shortly.",
-          time: "Just Now",
-          read: true
-        }
-      ]);
-      addNotification(`${expert?.user?.name || 'Your advisor'} replied to your message.`, 'info');
-    }, 1500);
+  const handleJoinConsultation = (booking) => {
+    playHaptic();
+    trackEvent('consultation_joined', { booking_id: booking.id, type: booking.type });
+    addNotification(`Joining secure ${booking.type.toLowerCase()} consultation link...`, 'success');
   };
 
-  const handleQuickReply = (text) => {
-    setInputText(text);
-  };
+  // Dynamic Document Checklist builder
+  const documentChecklist = useMemo(() => {
+    if (!activeRequest) return [];
 
-  // Helper active sub-status messages based on progress
-  const getSubtaskDetails = (progress) => {
-    if (progress >= 80) {
+    const requestName = (activeRequest.serviceName || '').toLowerCase();
+    
+    // Choose dynamic checklist schema based on request type
+    const checklistTemplate = (requestName.includes('gst') || requestName.includes('business'))
+      ? [
+          { category: 'PAN', label: 'PAN Card', desc: 'Verify PAN registry' },
+          { category: 'AADHAAR', label: 'Aadhaar Card', desc: 'Identity verification' },
+          { category: 'GST', label: 'GST Certificate', desc: 'GST Registration proof' },
+          { category: 'BUSINESS', label: 'Utility / Rent Bill', desc: 'Proof of Business place' }
+        ]
+      : [
+          { category: 'PAN', label: 'PAN Card', desc: 'Verify PAN registry' },
+          { category: 'AADHAAR', label: 'Aadhaar Card', desc: 'Identity verification' },
+          { category: 'ITR', label: 'Form 16 / Salary Slips', desc: 'Income proofs declaration' },
+          { category: 'BANK_STATEMENT', label: '12 Months Bank Statements', desc: 'Assess audit declarations' }
+        ];
+
+    // Map each template to actual uploaded documents relation
+    return checklistTemplate.map((item) => {
+      const matchedFile = (activeRequest.documents || []).find(
+        (doc) => (doc.category || '').toUpperCase() === item.category
+      );
+
       return {
-        task: `${expert?.name || 'Your advisor'} is wrapping up the draft.`,
-        eta: "Today, before 5:00 PM"
+        ...item,
+        uploaded: !!matchedFile,
+        fileName: matchedFile?.name || null,
+        status: matchedFile?.status || 'PENDING_UPLOAD',
+        rejectionReason: matchedFile?.reason || null
       };
-    }
-    if (progress >= 40) {
-      return {
-        task: `${expert?.name || 'Your advisor'} is checking your files.`,
-        eta: "Tomorrow, before noon"
-      };
-    }
-    return {
-      task: `Waiting for assignment.`,
-      eta: "Within 24 hours"
-    };
-  };
+    });
+  }, [activeRequest]);
 
-  const getTimelineSteps = (status, progressPercent) => {
+  // Compute blockers
+  const blockers = useMemo(() => {
+    return documentChecklist.filter(item => item.status === 'Rejected');
+  }, [documentChecklist]);
+
+  // Timeline Config
+  const timelineSteps = useMemo(() => {
+    if (!activeRequest) return [];
+    
     const steps = [
-      { key: 'NEW', title: 'Request Submitted', desc: 'Case received by Blueprint.' },
-      { key: 'EXPERT_ASSIGNED', title: 'Expert Assigned', desc: 'A dedicated advisor is on your case.' },
-      { key: 'DOCUMENTS_PENDING', title: 'Documents Verification', desc: 'Please upload files for review.' },
-      { key: 'IN_PROGRESS', title: 'Work in Progress', desc: 'Your advisor is preparing drafts.' },
-      { key: 'REVIEW', title: 'Draft Review', desc: 'Approve or comment on ready drafts.' },
-      { key: 'COMPLETED', title: 'Filing Completed', desc: 'Case successfully submitted and closed.' }
+      { key: 'NEW', title: 'Request Submitted', desc: 'Case received by Blueprint' },
+      { key: 'EXPERT_ASSIGNED', title: 'Expert Assigned', desc: 'CA partner is assigned to review' },
+      { key: 'DOCUMENTS_PENDING', title: 'Documents Verification', desc: 'Verification checklist completion' },
+      { key: 'IN_PROGRESS', title: 'Filing In Progress', desc: 'Advisor is draft compiling' },
+      { key: 'REVIEW', title: 'Draft Review', desc: 'Awaiting client approval signature' },
+      { key: 'COMPLETED', title: 'Case Completed', desc: 'Successfully filed and closed' }
     ];
 
-    const currentIdx = steps.findIndex(s => s.key === status);
-    
+    const currentIdx = steps.findIndex(s => s.key === activeRequest.status);
+
     return steps.map((s, idx) => {
       let stepStatus = 'pending';
-      if (status === 'COMPLETED') {
+      if (activeRequest.status === 'COMPLETED') {
         stepStatus = 'completed';
       } else if (idx < currentIdx) {
         stepStatus = 'completed';
       } else if (idx === currentIdx) {
         stepStatus = 'active';
-      } else {
-        stepStatus = 'pending';
       }
 
-      return {
-        title: s.title,
-        desc: s.desc,
-        status: stepStatus
-      };
+      return { ...s, status: stepStatus };
     });
-  };
+  }, [activeRequest]);
 
-  const progress = activeRequest.progressPercent !== undefined ? activeRequest.progressPercent : (activeRequest.progress !== undefined ? activeRequest.progress : 0);
-  const timeline = activeRequest.timeline || getTimelineSteps(activeRequest.status, progress);
-  const details = getSubtaskDetails(progress);
+  // Check active upcoming calls/bookings
+  const activeBookings = useMemo(() => {
+    return (activeRequest?.bookings || []).filter(
+      (b) => b.status !== 'CANCELLED' && b.status !== 'COMPLETED'
+    );
+  }, [activeRequest]);
 
-  // Mocked chat logic removed in favor of ChatBox component
-  
-  // Render Standard Tracking Mode
+  // Empty state handling
+  if (!activeRequest && !loading) {
+    return (
+      <div className="screen-shell" style={{ gap: 16, height: '80vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', textAlign: 'center', paddingInline: 20 }}>
+        <div style={{
+          width: 72,
+          height: 72,
+          borderRadius: '50%',
+          backgroundColor: 'rgba(99, 102, 241, 0.08)',
+          color: '#6366f1',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: '2rem'
+        }}>
+          📁
+        </div>
+        <h3 style={{ margin: '12px 0 6px', fontSize: '1.1rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+          No Active Filings
+        </h3>
+        <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45, marginBottom: 16 }}>
+          You don't have any ongoing compliance filings. Start a dynamic tax match to partner with an advisor.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            playHaptic();
+            setActiveTab('home');
+          }}
+          className="btn btn-primary"
+          style={{ minHeight: 44, borderRadius: 10, paddingInline: 24, fontSize: '0.82rem', fontWeight: 800 }}
+        >
+          Match with Advisor
+        </button>
+      </div>
+    );
+  }
+
+  // Loading skeleton screen
+  if (loading) {
+    return (
+      <div className="screen-shell" style={{ paddingInline: '8px', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 45, marginTop: 4 }}>
+          <div className="skeleton-container animate-pulse-slow" style={{ width: 44, height: 44, borderRadius: '50%' }} />
+          <div className="skeleton-container animate-pulse-slow" style={{ width: 120, height: 24, borderRadius: 6 }} />
+          <div className="skeleton-container animate-pulse-slow" style={{ width: 44, height: 44, borderRadius: '50%' }} />
+        </div>
+        <div className="skeleton-container animate-pulse-slow" style={{ height: 120, borderRadius: 16 }} />
+        <div className="skeleton-container animate-pulse-slow" style={{ height: 160, borderRadius: 16 }} />
+        <div className="skeleton-container animate-pulse-slow" style={{ height: 140, borderRadius: 16 }} />
+      </div>
+    );
+  }
+
   return (
-    <div 
-      className="screen-shell animate-fade-in-up"
-      style={{
-        gap: '16px',
-        paddingTop: '20px',
-        paddingBottom: '160px',
-        backgroundColor: '#FFFFFF'
-      }}
-    >
-      {/* Top Header Row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-        {/* Back Button */}
-        <button 
-          onClick={onBackToHome}
-          aria-label="Back"
+    <div className="screen-shell" style={{ gap: 14, paddingTop: 16, paddingBottom: 'calc(100px + env(safe-area-inset-bottom))' }}>
+      
+      {/* Top Header bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%' }}>
+        <button
+          type="button"
+          onClick={() => {
+            playHaptic();
+            onBackToHome();
+          }}
+          aria-label="Back to home dashboard"
           style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
+            width: 44,
+            height: 44,
+            borderRadius: '50%',
             border: '1px solid var(--border-color)',
-            backgroundColor: 'var(--bg-card)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+            background: 'var(--bg-card)',
             color: 'var(--text-primary)',
-            cursor: 'pointer',
-            boxShadow: 'var(--shadow-sm)',
-            transition: 'all var(--transition-fast)'
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-
-        {/* Title & Status */}
-        <div style={{ textAlign: 'center', flex: 1, padding: '0 8px' }}>
-          <h3 className="title-accent" style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
-            {activeRequest.serviceName}
-          </h3>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginTop: '4px' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--success)' }}></span>
-            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>
-              Active Stage: <span style={{ color: '#2563EB', fontWeight: 800 }}>{activeRequest.status}</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Menu Button */}
-        <button 
-          style={{
-            width: '42px',
-            height: '42px',
-            borderRadius: '12px',
-            border: '1px solid var(--border-color)',
-            backgroundColor: 'var(--bg-card)',
-            display: 'flex',
+            display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'var(--text-primary)',
             cursor: 'pointer',
-            boxShadow: 'var(--shadow-sm)'
-          }}
-          onClick={() => addNotification('Settings menu opened (Prototype Mode)', 'info')}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="5" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-            <circle cx="12" cy="19" r="1.5" fill="currentColor" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Selector dropdown for other requests (if exists) */}
-      {requests.length > 1 && (
-        <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', padding: '4px 0', width: '100%', flexShrink: 0 }}>
-          {requests.map(r => (
-            <button
-              key={r.id}
-              onClick={() => setManualRequestId(r.id)}
-              style={{
-                padding: '6px 12px',
-                borderRadius: '20px',
-                border: '1px solid',
-                borderColor: activeRequest.id === r.id ? 'var(--secondary)' : 'var(--border-color)',
-                backgroundColor: activeRequest.id === r.id ? 'rgba(14, 165, 233, 0.08)' : 'var(--bg-card)',
-                color: activeRequest.id === r.id ? 'var(--secondary)' : 'var(--text-secondary)',
-                fontSize: '0.72rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all var(--transition-fast)'
-              }}
-            >
-              {r.serviceName}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Missing Document Action Banner */}
-      {activeRequest.status === 'DOCUMENTS_PENDING' && (
-        <div 
-          className="card animate-scale-in"
-          style={{
-            backgroundColor: '#FFFBEB',
-            borderColor: '#FEF3C7',
-            color: '#92400E',
-            padding: '12px 14px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '10px',
-            width: '100%',
-            marginBottom: '12px'
-          }}
-        >
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '1.15rem' }}>📄</span>
-            <span style={{ fontSize: '0.76rem', fontWeight: 800 }}>Documents Required</span>
-          </div>
-          <p style={{ fontSize: '0.7rem', lineHeight: 1.4, margin: 0 }}>
-            Your expert has requested additional documents to proceed with the filing.
-          </p>
-          <button
-            onClick={() => {
-              addNotification('Navigating to Document Portal...', 'info');
-              setActiveTab('documents');
-            }}
-            className="btn btn-primary"
-            style={{
-              backgroundColor: '#D97706',
-              color: '#ffffff',
-              fontSize: '0.7rem',
-              padding: '8px 12px',
-              borderRadius: '10px',
-              width: 'fit-content'
-            }}
-          >
-            Go to Upload Portal
-          </button>
-        </div>
-      )}
-
-      {/* Rejected Document Action Banner */}
-      {(() => {
-        const rejectedDoc = documents.find(d => d.status === 'Rejected');
-        if (!rejectedDoc) return null;
-        return (
-          <div 
-            className="card animate-scale-in"
-            style={{
-              backgroundColor: 'var(--error-container)',
-              borderColor: 'rgba(239, 68, 68, 0.2)',
-              color: 'var(--on-error)',
-              padding: '12px 14px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px',
-              width: '100%'
-            }}
-          >
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <span style={{ fontSize: '1.15rem' }}>⚠️</span>
-              <span style={{ fontSize: '0.76rem', fontWeight: 800 }}>Action needed</span>
-            </div>
-            <p style={{ fontSize: '0.7rem', lineHeight: 1.4, margin: 0 }}>
-              Fix one file to continue. <br/>
-              <strong>Reason:</strong> {rejectedDoc.reason || "illegible scan"}
-            </p>
-            <button
-              onClick={() => {
-                localStorage.setItem('preselectUploadCategory', rejectedDoc.category);
-                addNotification(`Navigating to upload ${rejectedDoc.category} copy...`, 'info');
-                setActiveTab('documents');
-              }}
-              className="btn btn-primary"
-              style={{
-                backgroundColor: 'var(--error)',
-                color: '#ffffff',
-                fontSize: '0.7rem',
-                padding: '8px 12px',
-                borderRadius: '10px',
-                width: 'fit-content'
-              }}
-            >
-              Re-upload via Camera
-            </button>
-          </div>
-        );
-      })()}
-
-      {/* Overall Progress Card */}
-      <div 
-        className="card"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '18px',
-          borderRadius: '20px',
-          border: '1.5px solid rgba(226, 232, 240, 0.8)',
-          backgroundColor: '#FFFFFF',
-          boxShadow: '0 4px 20px rgba(10, 37, 64, 0.03)',
-          width: '100%',
-          gap: '12px'
-        }}
-      >
-        {/* Left Circular Progress */}
-        <div style={{ position: 'relative', width: '76px', height: '76px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="76" height="76" viewBox="0 0 36 36" style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx="18" cy="18" r="16" fill="none" stroke="rgba(14, 165, 233, 0.08)" strokeWidth="3.2" />
-            <circle 
-              cx="18" 
-              cy="18" 
-              r="16" 
-              fill="none" 
-              stroke="#0ea5e9" 
-              strokeWidth="3.2" 
-              strokeDasharray={`${progress}, 100`} 
-              style={{ transition: 'stroke-dasharray 1s ease-in-out', strokeLinecap: 'round' }}
-            />
-          </svg>
-          <span style={{ position: 'absolute', fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-accent)' }}>
-            {progress}%
-          </span>
-        </div>
-
-        {/* Center Details */}
-        <div style={{ flex: 1, paddingLeft: '4px' }}>
-          <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-            Overall Progress
-          </span>
-          <h4 style={{ fontSize: '0.98rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: '4px', marginBottom: '2px', lineHeight: 1.2 }}>
-            {activeRequest.serviceName}
-          </h4>
-          <span style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', display: 'block' }}>
-            Active Stage: <strong style={{ color: '#2563EB' }}>{activeRequest.status}</strong>
-          </span>
-        </div>
-
-        {/* Right ITR Document Graphic */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width="58" height="66" viewBox="0 0 60 68" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ filter: 'drop-shadow(0 4px 8px rgba(10, 37, 64, 0.04))' }}>
-            <rect x="4" y="4" width="48" height="60" rx="8" fill="#F0F7FF" stroke="#D0E5FF" strokeWidth="1.5" />
-            <rect x="12" y="16" width="22" height="4" rx="2" fill="#3B82F6" opacity="0.8" />
-            <line x1="12" y1="28" x2="44" y2="28" stroke="#93C5FD" strokeWidth="2.5" strokeLinecap="round" />
-            <line x1="12" y1="36" x2="38" y2="36" stroke="#E2E8F0" strokeWidth="2.5" strokeLinecap="round" />
-            <line x1="12" y1="44" x2="42" y2="44" stroke="#E2E8F0" strokeWidth="2.5" strokeLinecap="round" />
-            <text x="34" y="20" fill="#3B82F6" fontSize="8" fontWeight="900" fontFamily="var(--font-accent)">ITR</text>
-            <circle cx="48" cy="52" r="9" fill="#10B981" />
-            <path d="M45 52L47 54L51 50" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-      </div>
-
-      {/* Next Action Banner */}
-      <div 
-        className="card"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '16px',
-          borderRadius: '16px',
-          border: '1.5px solid rgba(226, 232, 240, 0.8)',
-          backgroundColor: '#FFFFFF',
-          boxShadow: '0 4px 20px rgba(10, 37, 64, 0.02)',
-          width: '100%',
-          gap: '12px'
-        }}
-      >
-        {/* Left Calendar Icon */}
-        <div 
-          style={{
-            width: '46px',
-            height: '46px',
-            borderRadius: '12px',
-            backgroundColor: '#EFF6FF',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
             flexShrink: 0
           }}
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-            <line x1="16" y1="2" x2="16" y2="6" />
-            <line x1="8" y1="2" x2="8" y2="6" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-            <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01M16 18h.01" stroke="#2563EB" strokeWidth="3" strokeLinecap="round" />
-          </svg>
-        </div>
-
-        {/* Center Details */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-            Next
-          </span>
-          <h5 style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: '2px', marginBottom: '4px', lineHeight: 1.3 }}>
-            {details.task}
-          </h5>
-          <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-secondary)', fontSize: '0.7rem', fontWeight: 600 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '4px' }}>
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span>{details.eta}</span>
-          </div>
-        </div>
-
-        {/* Right Reschedule Button */}
-        <button
-          onClick={() => setShowRescheduleModal(true)}
-          style={{
-            padding: '8px 16px',
-            borderRadius: '12px',
-            border: '1.5px solid #2563EB',
-            backgroundColor: 'transparent',
-            color: '#2563EB',
-            fontSize: '0.76rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-            whiteSpace: 'nowrap',
-            transition: 'all var(--transition-fast)'
-          }}
-        >
-          Reschedule
+          <Icon name="back" size={20} color="var(--text-primary)" />
         </button>
+
+        <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: 'var(--text-primary)', textAlign: 'center' }}>
+          Case Workspace
+        </h2>
+
+        <div style={{
+          borderRadius: 999,
+          padding: '6px 12px',
+          border: '1px solid rgba(16,185,129,0.3)',
+          background: 'rgba(16, 185, 129, 0.08)',
+          color: '#10b981',
+          fontSize: '0.68rem',
+          fontWeight: 800,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          whiteSpace: 'nowrap'
+        }}>
+          📁 Case ID: {activeRequest.id.slice(-6).toUpperCase()}
+        </div>
       </div>
 
-      {/* Progress Timeline Section */}
-      <div style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <h4 style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
-            Progress
-          </h4>
-          <span 
-            onClick={() => addNotification('Viewing full audit logs...', 'info')}
-            style={{ fontSize: '0.7rem', fontWeight: 700, color: '#2563EB', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
-          >
-            View all 
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
+      {/* Offline Status Alert Banner */}
+      {isOffline && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: 12,
+          padding: '8px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          boxSizing: 'border-box'
+        }} role="alert">
+          <Icon name="info" size={16} color="#ef4444" />
+          <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 600 }}>
+            Viewing offline cached details. Updates will sync online.
           </span>
         </div>
+      )}
 
-        <div className="card" style={{ padding: '16px', borderRadius: '20px', border: '1.5px solid rgba(226, 232, 240, 0.8)', backgroundColor: '#FFFFFF' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', position: 'relative' }}>
-            {timeline.map((step, idx) => {
-              // Timeline vertical line connection logic
-              const isLast = idx === timeline.length - 1;
-              const nextStep = !isLast ? timeline[idx + 1] : null;
-              
-              let lineColor = '#E2E8F0'; // Default line color
-              if (nextStep) {
-                if (nextStep.status === 'completed') {
-                  lineColor = '#10B981'; // Green for next completed
-                } else if (nextStep.status === 'active') {
-                  lineColor = '#3B82F6'; // Blue leading to active
-                }
-              }
+      {/* Case Selector Tabs */}
+      {requests.length > 1 && (
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', width: '100%', paddingBottom: 4, scrollbarWidth: 'none' }}>
+          {requests.map((r) => {
+            const isSelected = activeRequest.id === r.id;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => handleSelectRequest(r.id)}
+                aria-pressed={isSelected}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 20,
+                  border: isSelected ? '1.5px solid #10b981' : '1px solid var(--border-color)',
+                  background: isSelected ? 'rgba(16, 185, 129, 0.05)' : 'var(--bg-card)',
+                  color: isSelected ? '#10b981' : 'var(--text-secondary)',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  minHeight: 38
+                }}
+              >
+                {r.serviceName}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
-              // Dynamic step icon based on index/type
-              const renderStepIcon = (statusColor) => {
-                switch(idx) {
-                  case 0: // Request Submitted
-                    return (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={statusColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                        <line x1="16" y1="13" x2="8" y2="13" />
-                        <line x1="16" y1="17" x2="8" y2="17" />
-                        <polyline points="10 9 9 9 8 9" />
-                      </svg>
-                    );
-                  case 1: // Expert Assigned
-                    return (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={statusColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                        <circle cx="12" cy="7" r="4" />
-                      </svg>
-                    );
-                  case 2: // Documents Received
-                    return (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={statusColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                      </svg>
-                    );
-                  case 3: // Work Started
-                    return (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={statusColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="2" width="20" height="20" rx="4" />
-                        <polygon points="10 8 16 12 10 16 10 8" fill={statusColor} />
-                      </svg>
-                    );
-                  case 4: // Review Stage
-                    return (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={statusColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                      </svg>
-                    );
-                  default: // Completed / Final
-                    return (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={statusColor} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="8" r="7" />
-                        <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
-                      </svg>
-                    );
-                }
-              };
+      {/* Section 1: Outstanding Blockers & Warning Notifications */}
+      {blockers.length > 0 && (
+        <div className="card" style={{ padding: 12, background: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.2)', width: '100%', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#dc2626', marginBottom: 4 }}>
+            <Icon name="alert" size={16} color="#dc2626" />
+            <span style={{ fontSize: '0.78rem', fontWeight: 900 }}>Critical Actions Required</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+            {blockers.map((bl) => (
+              <div key={bl.category} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-primary)' }}>Re-upload {bl.label}</div>
+                  <div style={{ fontSize: '0.62rem', color: '#dc2626', marginTop: 1 }}>Reason: {bl.rejectionReason}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playHaptic();
+                    localStorage.setItem('preselectUploadCategory', bl.category);
+                    setActiveTab('documents');
+                  }}
+                  className="btn btn-primary"
+                  style={{
+                    backgroundColor: '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    minHeight: 32
+                  }}
+                >
+                  Upload File
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
-              // Determine styling variables based on state
-              const statusConfig = step.status === 'completed'
-                ? {
-                    indicatorDot: (
-                      <div style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}>
-                        <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                          <path d="M1.5 4L4 6.5L8.5 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </div>
-                    ),
-                    iconBgColor: idx === 1 ? '#E8F0FE' : '#E6F4EA',
-                    iconStrokeColor: idx === 1 ? '#1A73E8' : '#137333',
-                    badgeText: 'Completed',
-                    badgeBg: '#E6F4EA',
-                    badgeTextColor: '#137333'
-                  }
-                : step.status === 'active'
-                  ? {
-                      indicatorDot: (
-                        <div style={{ width: '20px', height: '20px', borderRadius: '50%', border: '2.5px solid #0EA5E9', backgroundColor: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 }}>
-                          <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#0EA5E9' }} />
-                        </div>
-                      ),
-                      iconBgColor: '#E8F0FE',
-                      iconStrokeColor: '#1A73E8',
-                      badgeText: 'In Progress',
-                      badgeBg: '#E8F0FE',
-                      badgeTextColor: '#1A73E8'
-                    }
-                  : {
-                      indicatorDot: (
-                        <div style={{ width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#E2E8F0', zIndex: 5 }} />
-                      ),
-                      iconBgColor: '#F1F3F4',
-                      iconStrokeColor: '#9CA3AF',
-                      badgeText: 'Pending',
-                      badgeBg: '#F1F3F4',
-                      badgeTextColor: '#5F6368'
-                    };
+      {/* Section 2: Case Overview Progress Wheel */}
+      <div className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', gap: 14, width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ position: 'relative', width: 64, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="64" height="64" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="16" fill="none" stroke="var(--border-color)" strokeWidth="3" />
+            <circle
+              cx="18"
+              cy="18"
+              r="16"
+              fill="none"
+              stroke="#10b981"
+              strokeWidth="3"
+              strokeDasharray={`${activeRequest.progressPercent || 30}, 100`}
+              strokeLinecap="round"
+              style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%', transition: 'stroke-dasharray 0.6s ease' }}
+            />
+          </svg>
+          <span style={{ position: 'absolute', fontSize: '0.9rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+            {activeRequest.progressPercent || 30}%
+          </span>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 800, color: 'var(--text-secondary)' }}>CASE FILING FILLED</span>
+          <h4 style={{ margin: '2px 0 0', fontSize: '0.86rem', fontWeight: 900, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            {activeRequest.serviceName}
+          </h4>
+          <p style={{ margin: '2px 0 0', fontSize: '0.68rem', color: 'var(--text-secondary)' }}>
+            Filing Stage: <strong style={{ color: '#10b981' }}>{activeRequest.status}</strong>
+          </p>
+        </div>
+      </div>
+
+      {/* Section 3: Upcoming Consultations */}
+      {activeBookings.length > 0 && (
+        <section aria-labelledby="upcoming-calls-title" style={{ width: '100%' }}>
+          <h3 id="upcoming-calls-title" style={{ fontSize: '0.74rem', fontWeight: 900, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.3px', margin: '4px 0 8px' }}>
+            Upcoming Consultations
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {activeBookings.map((b) => (
+              <div key={b.id} className="card" style={{ padding: 12, display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name={b.type === 'VIDEO' ? 'video' : 'phone'} size={14} color="#10b981" />
+                    {b.type === 'VIDEO' ? 'Video Review Session' : 'Telephonic consultation'}
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+                    📅 {b.date} · 🕒 {b.time}
+                  </div>
+                  <div style={{ fontSize: '0.62rem', color: '#10b981', fontWeight: 700, marginTop: 2 }}>
+                    Status: Verified Slot
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => handleJoinConsultation(b)}
+                    className="btn btn-primary"
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: 8,
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      minHeight: 34
+                    }}
+                  >
+                    Join
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playHaptic();
+                      setShowRescheduleModal(true);
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-secondary)',
+                      fontSize: '0.68rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      padding: 0
+                    }}
+                  >
+                    Reschedule
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Section 4: Progress Timeline */}
+      <section aria-labelledby="timeline-header-title" style={{ width: '100%' }}>
+        <h3 id="timeline-header-title" style={{ fontSize: '0.74rem', fontWeight: 900, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.3px', margin: '4px 0 8px' }}>
+          Request Timeline
+        </h3>
+        <div className="card" style={{ padding: 14, background: 'var(--bg-card)', borderColor: 'var(--border-color)', borderRadius: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {timelineSteps.map((step, idx) => {
+              const isLast = idx === timelineSteps.length - 1;
+              const isCompleted = step.status === 'completed';
+              const isActive = step.status === 'active';
 
               return (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', width: '100%', position: 'relative' }}>
-                  {/* Left connection line + dot */}
-                  <div style={{ width: '24px', display: 'flex', justifyContent: 'center', position: 'relative', height: '100%' }}>
-                    {statusConfig.indicatorDot}
-                    {!isLast && (
-                      <div 
-                        style={{
-                          position: 'absolute',
-                          top: '20px',
-                          bottom: '-28px',
-                          width: '2.5px',
-                          backgroundColor: lineColor,
-                          zIndex: 1
-                        }} 
-                      />
-                    )}
-                  </div>
-
-                  {/* Icon Circle */}
-                  <div 
-                    style={{
-                      width: '36px',
-                      height: '36px',
+                <div key={step.key} style={{ display: 'flex', gap: 12, position: 'relative' }}>
+                  
+                  {/* Indicator lines */}
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{
+                      width: 18,
+                      height: 18,
                       borderRadius: '50%',
-                      backgroundColor: statusConfig.iconBgColor,
+                      backgroundColor: isCompleted ? '#10b981' : isActive ? 'transparent' : 'var(--border-color)',
+                      border: isActive ? '2px solid #10b981' : 'none',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginLeft: '12px',
-                      flexShrink: 0
-                    }}
-                  >
-                    {renderStepIcon(statusConfig.iconStrokeColor)}
+                      zIndex: 2
+                    }}>
+                      {isCompleted && <span style={{ color: '#fff', fontSize: '0.54rem', fontWeight: 900 }}>✓</span>}
+                      {isActive && <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#10b981' }} />}
+                    </div>
+                    {!isLast && (
+                      <div style={{
+                        width: 2,
+                        flex: 1,
+                        minHeight: 24,
+                        backgroundColor: isCompleted ? '#10b981' : 'var(--border-color)',
+                        marginBlock: 2,
+                        zIndex: 1
+                      }} />
+                    )}
                   </div>
 
-                  {/* Text details */}
-                  <div style={{ flex: 1, marginLeft: '12px', minWidth: 0 }}>
-                    <h5 style={{ fontSize: '0.82rem', fontWeight: 800, color: step.status === 'pending' ? 'var(--text-tertiary)' : 'var(--text-primary)', margin: 0, lineHeight: 1.2 }}>
+                  {/* Stage copy details */}
+                  <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : 4 }}>
+                    <h5 style={{ margin: 0, fontSize: '0.78rem', fontWeight: isActive || isCompleted ? 900 : 700, color: isActive ? '#10b981' : isCompleted ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
                       {step.title}
                     </h5>
-                    <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                      {step.desc}
-                    </span>
-                  </div>
-
-                  {/* Right Status Badge */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '8px' }}>
-                    <span 
-                      style={{
-                        fontSize: '0.64rem',
-                        fontWeight: 700,
-                        padding: '4px 10px',
-                        borderRadius: '12px',
-                        backgroundColor: statusConfig.badgeBg,
-                        color: statusConfig.badgeTextColor,
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {statusConfig.badgeText}
-                    </span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.66rem', color: 'var(--text-secondary)' }}>{step.desc}</p>
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Expert Profile Card */}
-      {expert && (
-        <div style={{ width: '100%' }}>
-          <h4 style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '8px' }}>
-            Expert
-          </h4>
-          <div 
-            className="card" 
-            style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              gap: '16px', 
-              padding: '16px', 
-              borderRadius: '20px', 
-              border: '1.5px solid rgba(226, 232, 240, 0.8)', 
-              backgroundColor: '#FFFFFF' 
-            }}
-          >
-            {/* Expert Info Row */}
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              <img 
-                src={expert?.user?.photo || expert?.photo || 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=150&q=80'} 
-                alt={expert?.user?.name || expert?.name || 'Advisor'} 
-                style={{ width: '48px', height: '48px', borderRadius: '14px', objectFit: 'cover' }} 
-              />
-              <div style={{ flex: 1 }}>
-                <h5 style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {expert?.user?.name || expert?.name || 'Assigned Advisor'}
-                  {/* Blue verified check icon */}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
-                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM10 16.5L6 12.5L7.41 11.09L10 13.67L16.59 7.09L18 8.5L10 16.5Z" fill="#3B82F6" />
-                  </svg>
-                </h5>
-                <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                  {expert.expert?.specialization || expert.specialization || 'Taxation Specialist'}
-                </span>
+      {/* Section 5: Document Verification Checklist */}
+      <section aria-labelledby="checklist-header-title" style={{ width: '100%' }}>
+        <h3 id="checklist-header-title" style={{ fontSize: '0.74rem', fontWeight: 900, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.3px', margin: '4px 0 8px' }}>
+          Document Checklist
+        </h3>
+        <div className="card" style={{ padding: 12, background: 'var(--bg-card)', borderColor: 'var(--border-color)', borderRadius: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {documentChecklist.map((item) => {
+              const hasFile = item.uploaded;
+              const isRejected = item.status === 'Rejected';
+              const isApproved = item.status === 'Approved' || item.status === 'Verified';
+
+              return (
+                <div key={item.category} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center', paddingBottom: 8, borderBottom: '1px solid var(--border-color)' }}>
+                  <div>
+                    <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {item.label}
+                      <span style={{
+                        fontSize: '0.58rem',
+                        fontWeight: 800,
+                        padding: '2px 6px',
+                        borderRadius: 4,
+                        backgroundColor: isApproved ? 'rgba(16,185,129,0.08)' : isRejected ? 'rgba(239,68,68,0.08)' : 'var(--bg-surface-variant)',
+                        color: isApproved ? '#10b981' : isRejected ? '#dc2626' : 'var(--text-secondary)'
+                      }}>
+                        {isApproved ? 'Verified' : isRejected ? 'Rejected' : hasFile ? 'Verifying' : 'Required'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', marginTop: 2 }}>{item.desc}</div>
+                    {hasFile && (
+                      <div style={{ fontSize: '0.62rem', color: '#10b981', fontWeight: 500, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        Uploaded: {item.fileName}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playHaptic();
+                      localStorage.setItem('preselectUploadCategory', item.category);
+                      setActiveTab('documents');
+                    }}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      color: '#10b981',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      padding: 4,
+                      minHeight: 32,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4
+                    }}
+                    aria-label={`Upload copy for ${item.label}`}
+                  >
+                    <Icon name="plus" size={14} color="#10b981" />
+                    {hasFile ? 'Replace' : 'Upload'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* Section 6: Payment Summary & Tax Invoice */}
+      <section aria-labelledby="invoice-header-title" style={{ width: '100%' }}>
+        <h3 id="invoice-header-title" style={{ fontSize: '0.74rem', fontWeight: 900, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.3px', margin: '4px 0 8px' }}>
+          Payment &amp; Invoices
+        </h3>
+        <div className="card" style={{ padding: 12, background: 'var(--bg-card)', borderColor: 'var(--border-color)', borderRadius: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                Filing Fee: {formatMoney(activeRequest.amount || 1887)}
+              </div>
+              <div style={{ fontSize: '0.64rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+                Transaction ID: TXN-{activeRequest.id.slice(-6).toUpperCase()}
+              </div>
+              <div style={{ fontSize: '0.62rem', color: '#10b981', fontWeight: 700, marginTop: 2 }}>
+                Invoice Status: PAID
               </div>
             </div>
 
-            {/* Direct Contacts */}
-            <div style={{ display: 'flex', gap: '10px' }}>
-              {/* Chat Button */}
-              <button 
+            <button
+              type="button"
+              onClick={handleDownloadInvoice}
+              className="btn btn-primary"
+              style={{
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                minHeight: 34
+              }}
+              aria-label="Download tax receipt invoice"
+            >
+              <Icon name="download" size={12} color="#ffffff" />
+              Invoice
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Section 7: Expert details card */}
+      {activeRequest.assignedExpert && (
+        <section aria-labelledby="expert-header-title" style={{ width: '100%' }}>
+          <h3 id="expert-header-title" style={{ fontSize: '0.74rem', fontWeight: 900, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.3px', margin: '4px 0 8px' }}>
+            Assigned CA Partner
+          </h3>
+          <div className="card" style={{ padding: 12, background: 'var(--bg-card)', borderColor: 'var(--border-color)', borderRadius: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--border-color)', flexShrink: 0 }}>
+                <img src={activeRequest.assignedExpert.user?.photo || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&q=80'} alt={activeRequest.assignedExpert.user?.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {activeRequest.assignedExpert.user?.name || 'Chartered Accountant'}
+                  <span style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    backgroundColor: '#3b82f6',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.5rem',
+                    fontWeight: 900
+                  }}>✓</span>
+                </div>
+                <div style={{ fontSize: '0.64rem', color: 'var(--text-secondary)' }}>
+                  {activeRequest.assignedExpert.specialization || 'Taxation Expert'}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+              <button
+                type="button"
                 onClick={() => handleAction('Chat')}
                 style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  border: '1.5px solid #2563EB',
-                  backgroundColor: 'transparent',
-                  color: '#2563EB',
-                  fontWeight: 700,
-                  fontSize: '0.76rem',
+                  minHeight: 38,
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '6px',
-                  transition: 'all var(--transition-fast)'
+                  gap: 6
                 }}
+                aria-label={`Open chat room thread with CA ${activeRequest.assignedExpert.user?.name}`}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
+                <Icon name="chat" size={14} color="var(--text-primary)" />
                 Chat
               </button>
-
-              {/* Call Button */}
-              <button 
+              <button
+                type="button"
                 onClick={() => handleAction('Call')}
                 style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: '12px',
-                  border: '1.5px solid #2563EB',
-                  backgroundColor: 'transparent',
-                  color: '#2563EB',
-                  fontWeight: 700,
-                  fontSize: '0.76rem',
+                  minHeight: 38,
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.72rem',
+                  fontWeight: 800,
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '6px',
-                  transition: 'all var(--transition-fast)'
+                  gap: 6
                 }}
+                aria-label={`Initiate voice call dialer with CA ${activeRequest.assignedExpert.user?.name}`}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-                </svg>
+                <Icon name="phone" size={14} color="var(--text-primary)" />
                 Call Expert
               </button>
             </div>
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Download Deliverables Section */}
-      {(activeRequest.deliverables || []).length > 0 && (
-        <div style={{ width: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <h4 style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
-              Deliverables Uploaded
-            </h4>
-            <span 
-              onClick={() => addNotification('Viewing all deliverables...', 'info')}
-              style={{ fontSize: '0.7rem', fontWeight: 700, color: '#2563EB', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
-            >
-              View all 
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {(activeRequest.deliverables || []).map((file, idx) => (
-              <div 
-                key={idx}
-                className="card"
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 14px',
-                  borderRadius: '16px',
-                  border: '1.5px solid rgba(226, 232, 240, 0.8)',
-                  backgroundColor: '#FFFFFF',
-                  boxShadow: '0 4px 20px rgba(10, 37, 64, 0.02)'
-                }}
-              >
-                {/* Red PDF Icon + Details */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-                    <rect x="2" y="2" width="20" height="20" rx="4" fill="#FEE2E2" stroke="#EF4444" strokeWidth="1.5" />
-                    <text x="5" y="14" fill="#EF4444" fontSize="8" fontWeight="900" fontFamily="var(--font-accent)">PDF</text>
-                  </svg>
-                  
-                  <div style={{ minWidth: 0 }}>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)', display: 'block', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                      {file}
-                    </span>
-                    <span style={{ fontSize: '0.64rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
-                      Uploaded on 14 Jun, 04:25 PM • 2.4 MB
-                    </span>
-                  </div>
-                </div>
-                
-                {/* Download Actions */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button
-                    onClick={() => handleDownload(file)}
-                    style={{
-                      padding: '6px 14px',
-                      borderRadius: '10px',
-                      border: '1.5px solid #2563EB',
-                      backgroundColor: 'transparent',
-                      color: '#2563EB',
-                      fontSize: '0.74rem',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      transition: 'all var(--transition-fast)'
-                    }}
-                  >
-                    Download
-                  </button>
-
-                  <button
-                    onClick={() => addNotification('File options menu opened', 'info')}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: 'var(--text-tertiary)',
-                      cursor: 'pointer',
-                      padding: '4px',
-                      display: 'flex',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="5" r="1.5" fill="currentColor" />
-                      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-                      <circle cx="12" cy="19" r="1.5" fill="currentColor" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      {/* Chat Overlay */}
-      {showChat && (
-        <div 
+      {/* Chat Drawer Overlay */}
+      {showChat && activeRequest.assignedExpert && (
+        <div
           onClick={() => setShowChat(false)}
           style={{
             position: 'fixed',
@@ -869,20 +809,20 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
             zIndex: 1000
           }}
         >
-          <div 
-            onClick={(e) => e.stopPropagation()} 
-            style={{ 
-              position: 'absolute', 
-              bottom: 0, 
-              left: 0, 
-              right: 0, 
-              height: '60%' 
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: '80%'
             }}
           >
             <ChatBox
-              otherUserId={expert.userId}
-              otherUserName={expert?.user?.name || expert?.name}
-              currentUserId={user?.id || 'cli-1'}
+              otherUserId={activeRequest.assignedExpert.userId || activeRequest.assignedExpert.user?.id}
+              otherUserName={activeRequest.assignedExpert.user?.name || 'Chartered Accountant'}
+              currentUserId={user?.id || 'client-1'}
               onClose={() => setShowChat(false)}
               addNotification={addNotification}
             />
@@ -890,7 +830,7 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
         </div>
       )}
 
-      {/* Reschedule Modal */}
+      {/* Reschedule Calendar Modal */}
       {showRescheduleModal && (
         <div style={{
           position: 'fixed',
@@ -904,23 +844,28 @@ export default function Tracking({ requests, documents = [], selectedRequestId, 
           alignItems: 'center',
           justifyContent: 'center'
         }}>
-          <div className="card" style={{ width: '90%', maxWidth: '340px', padding: '24px', backgroundColor: '#fff', borderRadius: '16px' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '16px', fontSize: '1.1rem', fontWeight: 800 }}>Reschedule Call</h3>
+          <div className="card" style={{ width: '90%', maxWidth: '340px', padding: '24px', backgroundColor: 'var(--bg-card)', borderRadius: '16px' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '16px', fontSize: '1.1rem', fontWeight: 800 }}>Reschedule Consultation</h3>
+            
             <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>New Date</label>
-              <input type="date" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }} value={rescheduleData.date} onChange={e => setRescheduleData({...rescheduleData, date: e.target.value})} />
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }} id="lbl-resched-date">New Date</label>
+              <input type="date" aria-labelledby="lbl-resched-date" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box' }} value={rescheduleData.date} onChange={e => setRescheduleData({...rescheduleData, date: e.target.value})} />
             </div>
+
             <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>New Time</label>
-              <input type="time" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)' }} value={rescheduleData.time} onChange={e => setRescheduleData({...rescheduleData, time: e.target.value})} />
+              <label style={{ display: 'block', marginBottom: '6px', fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }} id="lbl-resched-time">New Time</label>
+              <input type="time" aria-labelledby="lbl-resched-time" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box' }} value={rescheduleData.time} onChange={e => setRescheduleData({...rescheduleData, time: e.target.value})} />
             </div>
+
             <div style={{ display: 'flex', gap: '12px' }}>
               <button 
+                type="button"
                 onClick={() => setShowRescheduleModal(false)}
-                style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', fontWeight: 700, cursor: 'pointer' }}>
+                style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-primary)', fontWeight: 700, cursor: 'pointer' }}>
                 Cancel
               </button>
               <button 
+                type="button"
                 disabled={isRescheduling}
                 onClick={() => {
                   if (!rescheduleData.date || !rescheduleData.time) {

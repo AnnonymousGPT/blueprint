@@ -4,6 +4,7 @@ import { supabase } from '../services/supabaseClient';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { App } from '@capacitor/app';
+import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 
 function Icon({ name, size = 20, color = 'currentColor', strokeWidth = 2.2 }) {
   const common = {
@@ -125,14 +126,21 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
   const [loginMethod, setLoginMethod] = useState('otp');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [emailAddress, setEmailAddress] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [otpCode, setOtpCode] = useState(['', '', '', '', '', '']);
-  const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Strict state machine state
+  // IDLE | SENDING_OTP | OTP_SEND_FAILED | OTP_SENT | VERIFYING_OTP | OTP_INVALID | REGISTRATION_REQUIRED | REGISTERING | AUTHENTICATED | ERROR
+  const [authState, setAuthState] = useState('IDLE');
+
+  // Offline status state
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  // OTP Cooldown counter state
+  const [cooldown, setCooldown] = useState(0);
+
   // Onboarding / Signup states
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [signupName, setSignupName] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
   const [signupRole, setSignupRole] = useState('CLIENT');
@@ -140,8 +148,87 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
   const [signupFees, setSignupFees] = useState('1000');
 
   const otpRefs = useRef([]);
+  const cooldownTimerRef = useRef(null);
+  const oauthWatchdogRef = useRef(null);
 
+  // Safe Capacitor Haptic trigger
+  const playHaptic = async (type) => {
+    try {
+      if (type === 'light') {
+        await Haptics.impact({ style: ImpactStyle.Light });
+      } else if (type === 'success') {
+        await Haptics.notification({ type: NotificationType.Success });
+      } else if (type === 'error') {
+        await Haptics.notification({ type: NotificationType.Error });
+      }
+    } catch (err) {
+      console.warn('Haptic feedback unavailable:', err);
+    }
+  };
+
+  // Analytics event logger
+  const trackEvent = (eventName, payload = {}) => {
+    console.log(`[Analytics] Event: ${eventName}`, payload);
+    if (window.gtag) {
+      window.gtag('event', eventName, payload);
+    }
+  };
+
+  // OTP Resend Cooldown Counter logic
+  const startCooldown = () => {
+    setCooldown(60);
+    if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+    cooldownTimerRef.current = setInterval(() => {
+      setCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(cooldownTimerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // Google OAuth cancellation watchdog (20 seconds)
+  const startOAuthWatchdog = () => {
+    if (oauthWatchdogRef.current) clearTimeout(oauthWatchdogRef.current);
+    oauthWatchdogRef.current = setTimeout(async () => {
+      if (authState === 'SENDING_OTP' || authState === 'VERIFYING_OTP') {
+        setAuthState('IDLE');
+        setErrorMsg('Google Sign-In cancelled.');
+        playHaptic('error');
+        trackEvent('oauth_cancelled', { reason: 'watchdog_timeout' });
+        addNotification?.('Google Sign-In cancelled.', 'error');
+        if (Capacitor.isNativePlatform()) {
+          await Browser.close().catch(() => {});
+        }
+      }
+    }, 20000);
+  };
+
+  const clearOAuthWatchdog = () => {
+    if (oauthWatchdogRef.current) {
+      clearTimeout(oauthWatchdogRef.current);
+      oauthWatchdogRef.current = null;
+    }
+  };
+
+  // Connection and Session Listeners
   useEffect(() => {
+    trackEvent('login_screen_viewed');
+
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    const handleSessionExpired = () => {
+      addNotification?.('Your session has expired. Please sign in again.', 'warning');
+      setAuthState('IDLE');
+      playHaptic('error');
+    };
+    window.addEventListener('auth_session_expired', handleSessionExpired);
+
     const scrollContainer = document.querySelector('.app-content');
     scrollContainer?.scrollTo?.(0, 0);
     if (scrollContainer) {
@@ -149,28 +236,26 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     }
     window.scrollTo?.(0, 0);
 
-    // Guard to prevent double-calling api.register
+    // Guard to prevent double execution
     let oauthHandled = false;
 
-    // Listen for Supabase OAuth callbacks — handle SIGNED_IN & INITIAL_SESSION to make sure sessions are captured
+    // Listen for Supabase OAuth redirect callbacks
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Supabase Auth Event:', event, session?.user?.email);
       
-      // Ensure we have a valid authenticated user object and session session properties
       if (session?.user && session?.user?.email && (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && !oauthHandled) {
         oauthHandled = true;
+        clearOAuthWatchdog();
         
-        // Store token immediately from Supabase session using all possible variations
         const actualToken = session?.access_token || session?.accessToken;
         if (actualToken) {
           localStorage.setItem('accessToken', actualToken);
         }
         
-        // Close browser on native (after OAuth redirect)
         if (Capacitor.isNativePlatform()) {
           await Browser.close().catch(() => {});
         }
-        setLoading(true);
+        setAuthState('VERIFYING_OTP');
         setErrorMsg('');
         try {
           const res = await api.register({
@@ -180,18 +265,25 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             role: 'CLIENT'
           });
           
-          // Re-verify token storage fallback
           if (res.token || res.accessToken) {
             localStorage.setItem('accessToken', res.token || res.accessToken);
           }
+          if (res.refreshToken) {
+            localStorage.setItem('refreshToken', res.refreshToken);
+          }
           
+          setAuthState('AUTHENTICATED');
+          playHaptic('success');
+          trackEvent('google_login_success', { userId: res.user?.id });
           addNotification?.(`Logged in successfully via Google!`, 'success');
           onLoginSuccess?.(res.user);
         } catch (err) {
+          setAuthState('ERROR');
           setErrorMsg(err.message);
+          playHaptic('error');
+          trackEvent('google_login_failed', { error: err.message });
           addNotification?.(err.message, 'error');
-          oauthHandled = false; // allow retry on error
-          setLoading(false);
+          oauthHandled = false;
         }
       }
     });
@@ -203,35 +295,33 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
         console.log('App URL opened:', url);
         if (url.startsWith('in.blueprintadvisor.app://') || url.includes('login-callback')) {
           await Browser.close().catch(() => {});
-          setLoading(true);
+          setAuthState('VERIFYING_OTP');
+          clearOAuthWatchdog();
 
-          // Standard PKCE flow code exchange
           const { error } = await supabase.auth.exchangeCodeForSession(url);
           if (error) {
             console.warn('OAuth exchange error, attempting fragment parse:', error.message);
-            
-            // Fallback parsing: In case verifier local state was reset due to WebView reload,
-            // check if access_token and refresh_token are encoded in url redirect hash/query parameters.
             const urlObj = new URL(url.replace('in.blueprintadvisor.app://', 'https://localhost/'));
-            // Parse query or hash fragment
             const params = new URLSearchParams(urlObj.hash.substring(1) || urlObj.search);
             const accessToken = params.get('access_token');
             const refreshToken = params.get('refresh_token');
 
             if (accessToken && refreshToken) {
               localStorage.setItem('accessToken', accessToken);
+              localStorage.setItem('refreshToken', refreshToken);
               const { error: setSessionError } = await supabase.auth.setSession({
                 access_token: accessToken,
                 refresh_token: refreshToken
               });
               if (setSessionError) {
-                console.error('setSession fallback error:', setSessionError.message);
+                setAuthState('ERROR');
                 setErrorMsg(setSessionError.message);
-                setLoading(false);
+                playHaptic('error');
               }
             } else {
+              setAuthState('ERROR');
               setErrorMsg(error.message);
-              setLoading(false);
+              playHaptic('error');
             }
           }
         }
@@ -241,31 +331,45 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     return () => {
       subscription?.unsubscribe();
       appUrlListener?.then?.(l => l.remove());
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('auth_session_expired', handleSessionExpired);
+      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
     };
   }, []);
 
   const resetVerification = () => {
-    setOtpSent(false);
     setMagicLinkSent(false);
     setOtpCode(['', '', '', '', '', '']);
     setErrorMsg('');
-    setLoading(false);
+    setAuthState('IDLE');
   };
 
   const handleSendOtp = async (e) => {
     e?.preventDefault?.();
 
-    if (phoneNumber.length < 10) {
-      setErrorMsg('Please enter a valid 10-digit mobile number.');
+    if (isOffline) {
+      addNotification?.('No Internet Connection. Please reconnect and try again.', 'error');
       return;
     }
 
-    setLoading(true);
+    if (phoneNumber.length < 10) {
+      setAuthState('ERROR');
+      setErrorMsg('Please enter a valid 10-digit mobile number.');
+      playHaptic('error');
+      return;
+    }
+
+    setAuthState('SENDING_OTP');
     setErrorMsg('');
+    trackEvent('otp_send_clicked', { phone: phoneNumber });
 
     try {
       const res = await api.sendOtp(phoneNumber);
-      setOtpSent(true);
+      setAuthState('OTP_SENT');
+      playHaptic('light');
+      trackEvent('otp_sent_success');
+      startCooldown();
       setOtpCode(['', '', '', '', '', '']);
       if (res && res.devOtp) {
         addNotification?.(`OTP Code for verification is: ${res.devOtp}`, 'info');
@@ -273,25 +377,33 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
         addNotification?.('Verification OTP code sent to your phone!', 'success');
       }
     } catch (err) {
+      setAuthState('OTP_SEND_FAILED');
       setErrorMsg(err.message);
+      playHaptic('error');
+      trackEvent('otp_sent_failed', { error: err.message });
       addNotification?.(err.message, 'error');
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleSendMagicLink = (e) => {
     e.preventDefault();
 
-    if (!emailAddress || !emailAddress.includes('@') || emailAddress.length < 5) {
-      setErrorMsg('Please enter a valid email address.');
+    if (isOffline) {
+      addNotification?.('No Internet Connection. Please reconnect and try again.', 'error');
       return;
     }
 
-    setLoading(true);
+    if (!emailAddress || !emailAddress.includes('@') || emailAddress.length < 5) {
+      setAuthState('ERROR');
+      setErrorMsg('Please enter a valid email address.');
+      playHaptic('error');
+      return;
+    }
+
+    setAuthState('SENDING_OTP');
     setErrorMsg('');
     setTimeout(() => {
-      setLoading(false);
+      setAuthState('IDLE');
       setMagicLinkSent(true);
       addNotification?.('Magic link sent to your email!', 'success');
       addNotification?.('Simulation active: Click the button below to continue.', 'info');
@@ -299,8 +411,9 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
   };
 
   const handleSimulateMagicClick = () => {
-    setLoading(true);
+    setAuthState('VERIFYING_OTP');
     setTimeout(() => {
+      setAuthState('AUTHENTICATED');
       addNotification?.('Logged in securely via Magic Link!', 'success');
       onLoginSuccess?.({
         name: 'Akash',
@@ -310,7 +423,6 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
         gst: '27AAAAA1111A1Z1',
         photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256'
       });
-      setLoading(false);
     }, 900);
   };
 
@@ -318,17 +430,44 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     if (value && isNaN(value)) return;
 
     const next = [...otpCode];
-    next[index] = value;
+    // Take only the last digit entered (handles standard mobile keypress and autofill values)
+    next[index] = value.substring(value.length - 1);
     setOtpCode(next);
 
     if (value !== '' && index < 5) {
       otpRefs.current[index + 1]?.focus?.();
     }
+
+    // Auto verify if all boxes filled
+    const fullOtp = next.join('');
+    if (fullOtp.length === 6 && !next.some(d => d === '')) {
+      executeVerifyOtp(fullOtp);
+    }
   };
 
   const handleOtpKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && otpCode[index] === '' && index > 0) {
-      otpRefs.current[index - 1]?.focus?.();
+    if (e.key === 'Backspace') {
+      if (otpCode[index] === '' && index > 0) {
+        const next = [...otpCode];
+        next[index - 1] = '';
+        setOtpCode(next);
+        otpRefs.current[index - 1]?.focus?.();
+      } else {
+        const next = [...otpCode];
+        next[index] = '';
+        setOtpCode(next);
+      }
+    }
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pasteData = e.clipboardData.getData('text').replace(/\D/g, '');
+    if (pasteData.length >= 6) {
+      const digits = pasteData.substring(0, 6).split('');
+      setOtpCode(digits);
+      otpRefs.current[5]?.focus?.();
+      executeVerifyOtp(pasteData.substring(0, 6));
     }
   };
 
@@ -337,38 +476,63 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     const otp = otpCode.join('');
 
     if (otp.length < 6) {
+      setAuthState('ERROR');
       setErrorMsg('Please enter all 6 digits of the verification code.');
+      playHaptic('error');
       return;
     }
 
-    setLoading(true);
+    await executeVerifyOtp(otp);
+  };
+
+  const executeVerifyOtp = async (otp) => {
+    if (isOffline) {
+      addNotification?.('No Internet Connection. Please reconnect and try again.', 'error');
+      return;
+    }
+
+    setAuthState('VERIFYING_OTP');
     setErrorMsg('');
+    trackEvent('otp_verify_clicked');
 
     try {
       const res = await api.verifyOtp(phoneNumber, otp);
       if (res.onboardingRequired) {
-        setShowOnboarding(true);
+        setAuthState('REGISTRATION_REQUIRED');
+        trackEvent('registration_started');
         addNotification?.('Welcome! Please complete your profile registration.', 'info');
       } else {
+        setAuthState('AUTHENTICATED');
+        playHaptic('success');
+        trackEvent('otp_verified_success');
         addNotification?.(`Welcome back, ${res.user.name || 'User'}!`, 'success');
         onLoginSuccess?.(res.user);
       }
     } catch (err) {
+      setAuthState('OTP_INVALID');
       setErrorMsg(err.message);
+      playHaptic('error');
+      trackEvent('otp_verified_failed', { error: err.message });
       addNotification?.(err.message, 'error');
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleRegister = async (e) => {
     e?.preventDefault?.();
-    if (!signupName.trim()) {
-      setErrorMsg('Please enter your full name.');
+
+    if (isOffline) {
+      addNotification?.('No Internet Connection. Please reconnect and try again.', 'error');
       return;
     }
 
-    setLoading(true);
+    if (!signupName.trim()) {
+      setAuthState('ERROR');
+      setErrorMsg('Please enter your full name.');
+      playHaptic('error');
+      return;
+    }
+
+    setAuthState('REGISTERING');
     setErrorMsg('');
 
     try {
@@ -380,25 +544,36 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
         specialization: signupRole === 'EXPERT' ? signupSpec : undefined,
         fees: signupRole === 'EXPERT' ? signupFees : undefined
       });
+      setAuthState('AUTHENTICATED');
+      playHaptic('success');
+      trackEvent('registration_completed', { role: signupRole });
       addNotification?.(`Account successfully created as ${signupRole}!`, 'success');
       onLoginSuccess?.(res.user);
     } catch (err) {
+      setAuthState('REGISTRATION_REQUIRED');
       setErrorMsg(err.message);
+      playHaptic('error');
       addNotification?.(err.message, 'error');
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    setLoading(true);
+    if (isOffline) {
+      addNotification?.('No Internet Connection. Please reconnect and try again.', 'error');
+      return;
+    }
+
+    setAuthState('SENDING_OTP');
     setErrorMsg('');
+    trackEvent('google_login_started');
+    startOAuthWatchdog();
+
     try {
       const isNative = Capacitor.isNativePlatform() || 
                        !!window.Capacitor || 
                        window.location.protocol === 'capacitor:' || 
                        /Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent);
-                       
+                        
       const redirectTo = isNative
         ? 'in.blueprintadvisor.app://login-callback'
         : window.location.origin;
@@ -416,9 +591,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
       });
       if (error) throw error;
 
-      // On native: open in-app browser manually
       if (isNative && data?.url) {
-        // Force replace auth flow redirect URL to return hash tokens instead of authorization code
         let targetUrl = data.url;
         if (targetUrl.includes('response_type=code')) {
           targetUrl = targetUrl.replace('response_type=code', 'response_type=token');
@@ -426,9 +599,12 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
         await Browser.open({ url: targetUrl, windowName: '_self' });
       }
     } catch (err) {
+      clearOAuthWatchdog();
+      setAuthState('ERROR');
       setErrorMsg(err.message);
+      playHaptic('error');
+      trackEvent('google_login_failed', { error: err.message });
       addNotification?.(err.message, 'error');
-      setLoading(false);
     }
   };
 
@@ -466,6 +642,10 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     { label: 'Microsoft', letter: 'M', bg: 'rgba(34,197,94,0.10)', fg: '#0f766e' }
   ];
 
+  const isLoading = authState === 'SENDING_OTP' || authState === 'VERIFYING_OTP' || authState === 'REGISTERING';
+  const isOtpCodeView = authState === 'OTP_SENT' || authState === 'VERIFYING_OTP' || authState === 'OTP_INVALID';
+  const isRegisterView = authState === 'REGISTRATION_REQUIRED' || authState === 'REGISTERING';
+
   return (
     <div className="screen-shell login-shell animate-fade-in-up">
       <div className="login-topbar">
@@ -474,6 +654,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
           onClick={onCancel}
           className="login-icon-button"
           aria-label="Go back"
+          disabled={isLoading}
         >
           <Icon name="back" size={22} />
         </button>
@@ -483,6 +664,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             type="button"
             onClick={() => addNotification?.('Support is on the way.', 'info')}
             className="login-help-button"
+            disabled={isLoading}
           >
             <Icon name="help" size={18} />
             Need help?
@@ -490,17 +672,17 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
         </div>
       </div>
 
-      {showOnboarding ? (
+      {isRegisterView ? (
         <div className="login-auth-card animate-scale-in">
           <div className="login-otp-header" style={{ marginBottom: 20 }}>
             <button
               type="button"
               onClick={() => {
-                setShowOnboarding(false);
-                setOtpSent(false);
+                setAuthState('IDLE');
                 setOtpCode(['', '', '', '', '', '']);
               }}
               className="login-otp-link"
+              disabled={isLoading}
             >
               <Icon name="back" size={16} />
               Back to Login
@@ -511,7 +693,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
 
           <form onSubmit={handleRegister} className="login-form" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div className="login-field">
-              <label className="login-field-label">Full Name</label>
+              <label className="login-field-label" id="label-signup-name">Full Name</label>
               <div className="login-phone-field">
                 <input
                   type="text"
@@ -520,12 +702,15 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                   onChange={(e) => setSignupName(e.target.value)}
                   className="login-text-input"
                   required
+                  aria-labelledby="label-signup-name"
+                  aria-required="true"
+                  disabled={isLoading}
                 />
               </div>
             </div>
 
             <div className="login-field">
-              <label className="login-field-label">Email Address (Optional)</label>
+              <label className="login-field-label" id="label-signup-email">Email Address (Optional)</label>
               <div className="login-phone-field">
                 <input
                   type="email"
@@ -533,6 +718,8 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                   value={signupEmail}
                   onChange={(e) => setSignupEmail(e.target.value)}
                   className="login-text-input"
+                  aria-labelledby="label-signup-email"
+                  disabled={isLoading}
                 />
               </div>
             </div>
@@ -544,7 +731,9 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                   type="button"
                   onClick={() => setSignupRole('CLIENT')}
                   className={`login-method-tab ${signupRole === 'CLIENT' ? 'active' : ''}`}
-                  style={{ flex: 1, fontSize: '0.78rem', height: 38 }}
+                  style={{ flex: 1, fontSize: '0.78rem', height: 48 }}
+                  aria-label="Register as Client"
+                  disabled={isLoading}
                 >
                   Client
                 </button>
@@ -552,7 +741,9 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                   type="button"
                   onClick={() => setSignupRole('EXPERT')}
                   className={`login-method-tab ${signupRole === 'EXPERT' ? 'active' : ''}`}
-                  style={{ flex: 1, fontSize: '0.78rem', height: 38 }}
+                  style={{ flex: 1, fontSize: '0.78rem', height: 48 }}
+                  aria-label="Register as CA Expert"
+                  disabled={isLoading}
                 >
                   CA Expert
                 </button>
@@ -560,7 +751,9 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                   type="button"
                   onClick={() => setSignupRole('ADMIN')}
                   className={`login-method-tab ${signupRole === 'ADMIN' ? 'active' : ''}`}
-                  style={{ flex: 1, fontSize: '0.78rem', height: 38 }}
+                  style={{ flex: 1, fontSize: '0.78rem', height: 48 }}
+                  aria-label="Register as Admin"
+                  disabled={isLoading}
                 >
                   Admin
                 </button>
@@ -570,7 +763,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             {signupRole === 'EXPERT' && (
               <div className="animate-scale-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <div className="login-field">
-                  <label className="login-field-label">Specialization</label>
+                  <label className="login-field-label" id="label-signup-spec">Specialization</label>
                   <div className="login-phone-field">
                     <input
                       type="text"
@@ -579,12 +772,15 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                       onChange={(e) => setSignupSpec(e.target.value)}
                       className="login-text-input"
                       required
+                      aria-labelledby="label-signup-spec"
+                      aria-required="true"
+                      disabled={isLoading}
                     />
                   </div>
                 </div>
 
                 <div className="login-field">
-                  <label className="login-field-label">Consultation Fee (Rs.)</label>
+                  <label className="login-field-label" id="label-signup-fees">Consultation Fee (Rs.)</label>
                   <div className="login-phone-field">
                     <input
                       type="number"
@@ -593,6 +789,9 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                       onChange={(e) => setSignupFees(e.target.value)}
                       className="login-text-input"
                       required
+                      aria-labelledby="label-signup-fees"
+                      aria-required="true"
+                      disabled={isLoading}
                     />
                   </div>
                 </div>
@@ -601,8 +800,8 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
 
             {errorMsg && <div className="login-field-note" style={{ color: '#dc2626', textAlign: 'left' }}>{errorMsg}</div>}
 
-            <button type="submit" className="login-cta" disabled={loading}>
-              {loading ? (
+            <button type="submit" className="login-cta" style={{ height: 48 }} disabled={isLoading}>
+              {isLoading ? (
                 <span className="spinner-circle" style={{ width: 20, height: 20 }} />
               ) : (
                 <>
@@ -615,7 +814,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             </button>
           </form>
         </div>
-      ) : !otpSent && !magicLinkSent ? (
+      ) : !isOtpCodeView && !magicLinkSent ? (
         <>
           <section className="login-hero-card">
             <div className="login-hero-content">
@@ -643,6 +842,9 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                   resetVerification();
                 }}
                 className={`login-method-tab ${loginMethod === 'otp' ? 'active' : ''}`}
+                style={{ height: 48 }}
+                aria-label="Use phone OTP login method"
+                disabled={isLoading}
               >
                 <Icon name="phone" size={18} color={loginMethod === 'otp' ? '#ffffff' : '#64748b'} />
                 OTP
@@ -655,6 +857,9 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                   resetVerification();
                 }}
                 className={`login-method-tab ${loginMethod === 'magic' ? 'active' : ''}`}
+                style={{ height: 48 }}
+                aria-label="Use email magic link login method"
+                disabled={isLoading}
               >
                 <Icon name="mail" size={18} color={loginMethod === 'magic' ? '#ffffff' : '#64748b'} />
                 Email Link
@@ -687,10 +892,10 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
               </div>
             </div>
 
-            {loginMethod === 'otp' && !otpSent ? (
+            {loginMethod === 'otp' && !isOtpCodeView ? (
               <form onSubmit={handleSendOtp} className="login-form">
                 <div className="login-field">
-                  <label className="login-field-label">
+                  <label className="login-field-label" id="label-phone-input">
                     <Icon name="phone" size={18} color="#0f172a" />
                     Mobile Number
                   </label>
@@ -707,6 +912,10 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ''))}
                       className="login-text-input"
+                      aria-labelledby="label-phone-input"
+                      aria-required="true"
+                      aria-invalid={authState === 'ERROR' ? 'true' : 'false'}
+                      disabled={isLoading}
                     />
                   </div>
 
@@ -721,9 +930,10 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                 <button
                   type="submit"
                   className="login-cta"
-                  disabled={loading || phoneNumber.length < 10}
+                  style={{ height: 48 }}
+                  disabled={isLoading || phoneNumber.length < 10}
                 >
-                  {loading ? (
+                  {isLoading ? (
                     <span className="spinner-circle" style={{ width: 20, height: 20 }} />
                   ) : (
                     <>
@@ -738,7 +948,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             ) : loginMethod === 'magic' && !magicLinkSent ? (
               <form onSubmit={handleSendMagicLink} className="login-form">
                 <div className="login-field">
-                  <label className="login-field-label">
+                  <label className="login-field-label" id="label-email-input">
                     <Icon name="mail" size={18} color="#0f172a" />
                     Email Address
                   </label>
@@ -750,6 +960,10 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                       value={emailAddress}
                       onChange={(e) => setEmailAddress(e.target.value)}
                       className="login-text-input"
+                      aria-labelledby="label-email-input"
+                      aria-required="true"
+                      aria-invalid={authState === 'ERROR' ? 'true' : 'false'}
+                      disabled={isLoading}
                     />
                   </div>
                 </div>
@@ -759,9 +973,10 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                 <button
                   type="submit"
                   className="login-cta"
-                  disabled={loading || !emailAddress.includes('@')}
+                  style={{ height: 48 }}
+                  disabled={isLoading || !emailAddress.includes('@')}
                 >
-                  {loading ? (
+                  {isLoading ? (
                     <span className="spinner-circle" style={{ width: 20, height: 20 }} />
                   ) : (
                     <>
@@ -779,14 +994,22 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
 
             <div className="login-social-grid">
               {brandSocial.map((brand) => (
-                <button key={brand.label} type="button" className="login-social-btn" onClick={() => {
-                  if (brand.label === 'Google') {
-                    handleGoogleLogin();
-                  } else {
-                    setSignupName(brand.label + " User");
-                    setShowOnboarding(true);
-                  }
-                }}>
+                <button
+                  key={brand.label}
+                  type="button"
+                  className="login-social-btn"
+                  style={{ height: 48 }}
+                  aria-label={`Log in with ${brand.label}`}
+                  onClick={() => {
+                    if (brand.label === 'Google') {
+                      handleGoogleLogin();
+                    } else {
+                      setSignupName(brand.label + " User");
+                      setAuthState('REGISTRATION_REQUIRED');
+                    }
+                  }}
+                  disabled={isLoading}
+                >
                   <SocialBadge {...brand} />
                   {brand.label}
                 </button>
@@ -795,11 +1018,21 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
 
             <div className="login-footer-links">
               By continuing, you agree to our{' '}
-              <button type="button" className="login-link" onClick={() => addNotification?.('Terms of Service opened.', 'info')}>
+              <button
+                type="button"
+                className="login-link"
+                onClick={() => addNotification?.('Terms of Service opened.', 'info')}
+                disabled={isLoading}
+              >
                 Terms of Service
               </button>{' '}
               and{' '}
-              <button type="button" className="login-link" onClick={() => addNotification?.('Privacy Policy opened.', 'info')}>
+              <button
+                type="button"
+                className="login-link"
+                onClick={() => addNotification?.('Privacy Policy opened.', 'info')}
+                disabled={isLoading}
+              >
                 Privacy Policy
               </button>
             </div>
@@ -839,10 +1072,14 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
                 Click below to simulate opening the magic link from your email.
               </div>
-              <button type="button" onClick={() => {
-                setShowOnboarding(true);
-              }} className="login-cta">
-                {loading ? (
+              <button
+                type="button"
+                onClick={handleSimulateMagicClick}
+                className="login-cta"
+                style={{ height: 48 }}
+                disabled={isLoading}
+              >
+                {isLoading ? (
                   <span className="spinner-circle" style={{ width: 20, height: 20 }} />
                 ) : (
                   <>
@@ -862,6 +1099,7 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                 setEmailAddress('');
               }}
               className="login-link"
+              disabled={isLoading}
             >
               Back
             </button>
@@ -873,10 +1111,11 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             <button
               type="button"
               onClick={() => {
-                setOtpSent(false);
+                setAuthState('IDLE');
                 setOtpCode(['', '', '', '', '', '']);
               }}
               className="login-otp-link"
+              disabled={isLoading}
             >
               <Icon name="back" size={16} />
               Edit Number
@@ -897,6 +1136,13 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
                 onChange={(e) => handleOtpChange(index, e.target.value)}
                 onKeyDown={(e) => handleOtpKeyDown(index, e)}
                 onFocus={(e) => e.target.select()}
+                onPaste={index === 0 ? handlePaste : undefined}
+                autocomplete="one-time-code"
+                inputmode="numeric"
+                aria-label={`OTP Digit ${index + 1}`}
+                aria-required="true"
+                aria-invalid={authState === 'OTP_INVALID' ? 'true' : 'false'}
+                disabled={isLoading}
               />
             ))}
           </div>
@@ -907,9 +1153,10 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             type="button"
             onClick={handleVerifyOtp}
             className="login-cta"
-            disabled={loading || otpCode.some((digit) => digit === '')}
+            style={{ height: 48 }}
+            disabled={isLoading || otpCode.some((digit) => digit === '')}
           >
-            {loading ? (
+            {isLoading ? (
               <span className="spinner-circle" style={{ width: 20, height: 20 }} />
             ) : (
               <>
@@ -925,9 +1172,48 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
             type="button"
             onClick={handleSendOtp}
             className="login-link"
+            disabled={isLoading || cooldown > 0}
+            aria-label={cooldown > 0 ? `Resend OTP in ${cooldown} seconds` : 'Resend OTP'}
           >
-            Didn&apos;t receive the OTP? Resend OTP
+            {cooldown > 0 ? `Resend OTP in ${cooldown} seconds` : "Didn't receive the OTP? Resend OTP"}
           </button>
+        </div>
+      )}
+
+      {isOffline && (
+        <div className="login-offline-overlay animate-fade-in" style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(8, 15, 30, 0.95)',
+          backdropFilter: 'blur(12px)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          padding: 24,
+          textAlign: 'center'
+        }}>
+          <div className="login-success-card" style={{ maxWidth: 320 }}>
+            <div className="login-success-badge" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+              <Icon name="shield" size={30} color="#ef4444" />
+            </div>
+            <div className="login-success-title" style={{ color: '#ffffff' }}>No Internet Connection</div>
+            <div className="login-success-copy" style={{ color: '#94a3b8', marginBottom: 20 }}>
+              Please reconnect and try again.
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsOffline(!navigator.onLine)}
+              className="login-cta"
+              style={{ width: '100%', height: 48 }}
+            >
+              Retry
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -30,6 +30,16 @@ export const uploadDocument = async (req: AuthenticatedRequest, res: Response) =
     const document = await prisma.document.create({
       data: { userId, requestId: requestId || null, name, key: fileKey, category: normalizedCategory as any, size: size || '1.5 MB' }
     });
+
+    // Audit log for legacy upload
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'DOC_UPLOAD',
+        details: `Legacy uploaded file metadata: ${name} (Category: ${normalizedCategory})`
+      }
+    });
+
     return res.status(201).json({ success: true, data: document });
   } catch (error: any) {
     console.error('Document upload error:', error?.message);
@@ -79,6 +89,16 @@ export const confirmUpload = async (req: AuthenticatedRequest, res: Response) =>
         size: size || '1 MB'
       }
     });
+
+    // Audit log for Supabase direct upload confirmation
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'DOC_UPLOAD_CONFIRM',
+        details: `Confirmed storage upload file: ${fileName} under category ${normalizedCategory}`
+      }
+    });
+
     return res.status(201).json({ success: true, data: document });
   } catch (error: any) {
     console.error('Confirm upload error:', error?.message);
@@ -86,12 +106,40 @@ export const confirmUpload = async (req: AuthenticatedRequest, res: Response) =>
   }
 };
 
-// GET /documents/:id/download — signed download URL
+// GET /documents/:id/download — signed download URL with access control
 export const getDocumentDownloadUrl = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const doc = await prisma.document.findUnique({ where: { id } });
+    const userId = req.user!.id;
+    const role = req.user!.role;
+
+    const doc = await prisma.document.findUnique({ 
+      where: { id },
+      include: { request: true }
+    });
     if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    // IDOR Protection: Validate role-based ownership
+    if (role === 'CLIENT' && doc.userId !== userId) {
+      return res.status(403).json({ error: 'Forbidden: You do not have permission to access this document.' });
+    }
+
+    if (role === 'EXPERT') {
+      const expert = await prisma.expert.findUnique({ where: { userId } });
+      if (!expert || (doc.request && doc.request.assignedExpertId !== expert.id)) {
+        return res.status(403).json({ error: 'Forbidden: You are not the assigned expert for this document.' });
+      }
+    }
+
+    // Audit log for document access
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'DOC_DOWNLOAD',
+        details: `Downloaded file: ${doc.name} (Key: ${doc.key})`
+      }
+    });
+
     const signedUrl = await getSignedDownloadUrl(doc.key, 3600);
     return res.json({ success: true, url: signedUrl, document: doc });
   } catch (error: any) {
@@ -100,10 +148,28 @@ export const getDocumentDownloadUrl = async (req: AuthenticatedRequest, res: Res
   }
 };
 
-// GET /documents/by-request/:requestId — list docs for a request
+// GET /documents/by-request/:requestId — list docs for a request with access control
 export const getDocumentsByRequest = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { requestId } = req.params;
+    const userId = req.user!.id;
+    const role = req.user!.role;
+
+    const request = await prisma.serviceRequest.findUnique({ where: { id: requestId } });
+    if (!request) return res.status(404).json({ error: 'Request not found' });
+
+    // IDOR Protection: Check if request is associated with client or expert
+    if (role === 'CLIENT' && request.userId !== userId) {
+      return res.status(403).json({ error: 'Forbidden: Access denied to this request documents.' });
+    }
+
+    if (role === 'EXPERT') {
+      const expert = await prisma.expert.findUnique({ where: { userId } });
+      if (!expert || request.assignedExpertId !== expert.id) {
+        return res.status(403).json({ error: 'Forbidden: You are not the assigned expert for this request.' });
+      }
+    }
+
     const docs = await prisma.document.findMany({
       where: { requestId },
       orderBy: { createdAt: 'desc' }
@@ -115,14 +181,43 @@ export const getDocumentsByRequest = async (req: AuthenticatedRequest, res: Resp
   }
 };
 
-// PATCH /documents/:id — update status (expert approval/rejection)
+// PATCH /documents/:id — update status with access control (expert approval/rejection)
 export const updateDocumentStatus = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { status, reason } = req.body;
+    const userId = req.user!.id;
+    const role = req.user!.role;
+
+    const doc = await prisma.document.findUnique({ 
+      where: { id },
+      include: { request: true }
+    });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    // Access control check for document status update
+    if (role === 'EXPERT') {
+      const expert = await prisma.expert.findUnique({ where: { userId } });
+      if (!expert || (doc.request && doc.request.assignedExpertId !== expert.id)) {
+        return res.status(403).json({ error: 'Forbidden: You are not the assigned expert for this request.' });
+      }
+    } else if (role !== 'ADMIN') {
+      return res.status(403).json({ error: 'Forbidden: Insufficient privileges.' });
+    }
+
     const document = await prisma.document.update({
       where: { id }, data: { status, reason }
     });
+
+    // Audit log for document status update
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: 'DOC_STATUS_UPDATE',
+        details: `Updated document ${id} status to ${status}. Reason: ${reason || 'N/A'}`
+      }
+    });
+
     return res.status(200).json({ success: true, data: document });
   } catch (error: any) {
     console.error('Document status update error:', error?.message);

@@ -1,27 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { api } from '../services/apiService';
 import Confetti from '../components/Confetti';
+import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 
 const paymentMethods = [
   { id: 'gpay', name: 'Google Pay', type: 'upi' },
   { id: 'phonepe', name: 'PhonePe', type: 'upi' },
-  { id: 'paytm', name: 'Paytm Wallet', type: 'upi' },
-  { id: 'card', name: 'Credit / Debit Card', type: 'card' }
+  { id: 'card', name: 'Credit / Debit Card', type: 'card' },
+  { id: 'netbank', name: 'Net Banking', type: 'netbank' }
+];
+
+const popularBanks = [
+  { id: 'sbi', name: 'State Bank of India' },
+  { id: 'hdfc', name: 'HDFC Bank' },
+  { id: 'icici', name: 'ICICI Bank' },
+  { id: 'axis', name: 'Axis Bank' }
 ];
 
 function formatMoney(value) {
   return `₹${Number(value || 0).toLocaleString('en-IN')}`;
-}
-
-function formatReviewCount(count = 0) {
-  if (count >= 1000) {
-    return `${(count / 1000).toFixed(1).replace('.0', '')}k reviews`;
-  }
-  return `${count} reviews`;
-}
-
-function compactExperience(text = '') {
-  return text.replace('Years', 'Yrs').replace('Exp', 'Exp');
 }
 
 function Icon({ name, size = 20, strokeWidth = 2.2, color = 'currentColor' }) {
@@ -57,13 +54,6 @@ function Icon({ name, size = 20, strokeWidth = 2.2, color = 'currentColor' }) {
           <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z" />
           <path d="M14 2v5h5" />
           <path d="M9 12h6M9 16h6" />
-        </svg>
-      );
-    case 'edit':
-      return (
-        <svg {...common}>
-          <path d="m4 20 4-1 11-11-3-3L5 16l-1 4Z" />
-          <path d="m14 6 3 3" />
         </svg>
       );
     case 'calendar':
@@ -119,8 +109,8 @@ function Icon({ name, size = 20, strokeWidth = 2.2, color = 'currentColor' }) {
     case 'arrow':
       return (
         <svg {...common}>
-          <path d="M5 12h14" />
-          <path d="m13 5 7 7-7 7" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+          <polyline points="12 5 19 12 12 19" />
         </svg>
       );
     case 'check':
@@ -129,61 +119,30 @@ function Icon({ name, size = 20, strokeWidth = 2.2, color = 'currentColor' }) {
           <path d="m20 6-11 11-5-5" />
         </svg>
       );
+    case 'cross':
+      return (
+        <svg {...common}>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      );
     default:
       return null;
   }
 }
 
-function PaymentDetailRow({ icon, label, value, onClick }) {
-  return (
-    <button type="button" className="payment-detail-row" onClick={onClick}>
-      <span className="payment-detail-icon">
-        <Icon name={icon} size={18} />
-      </span>
-      <span className="payment-detail-copy">
-        <span className="payment-detail-label">{label}</span>
-      </span>
-      <span className="payment-detail-value">{value}</span>
-      <span className="payment-detail-chevron" aria-hidden="true">
-        ›
-      </span>
-    </button>
-  );
-}
-
-function PaymentDocItem({ title, subtitle }) {
-  return (
-    <div className="payment-doc-item">
-      <span className="payment-doc-icon">
-        <Icon name="doc" size={18} color="#16a34a" />
-      </span>
-      <div className="payment-doc-copy">
-        <div className="payment-doc-title">{title}</div>
-        <div className="payment-doc-subtitle">{subtitle}</div>
-      </div>
-      <span className="payment-doc-badge">Required</span>
-    </div>
-  );
-}
-
-function PaymentPill({ icon, children, tone = 'neutral' }) {
-  return (
-    <span className={`payment-pill ${tone === 'success' ? 'success' : ''}`}>
-      {icon && <Icon name={icon} size={14} color={tone === 'success' ? '#16a34a' : 'currentColor'} />}
-      {children}
-    </span>
-  );
-}
-
 export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess, addNotification }) {
+  // Payment states: REVIEW | PENDING | SUCCESS | FAILED
+  const [paymentState, setPaymentState] = useState('REVIEW');
   const [selectedMethod, setSelectedMethod] = useState('Google Pay');
-  const [showMoreOptions, setShowMoreOptions] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [selectedBank, setSelectedBank] = useState('sbi');
+  const [loading, setLoading] = useState(true);
   const [txnDetails, setTxnDetails] = useState(null);
-  const [companyGst, setCompanyGst] = useState('');
-  const [isCorporate, setIsCorporate] = useState(false);
+  const [failureReason, setFailureReason] = useState('');
+  
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
+  // Form input states
   const [cardNumber, setCardNumber] = useState('');
   const [cardHolder, setCardHolder] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
@@ -192,11 +151,14 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
   const [upiId, setUpiId] = useState('');
   const [isVerifyingUpi, setIsVerifyingUpi] = useState(false);
   const [upiVerified, setUpiVerified] = useState(false);
-  const [qrSeconds, setQrSeconds] = useState(179);
 
-  const [gatewayStep, setGatewayStep] = useState(0); // 0 idle, 1 handshake, 2 contacting, 3 auth, 4 verifying
   const [bankOtp, setBankOtp] = useState('');
   const [gatewayStatusText, setGatewayStatusText] = useState('');
+  
+  // Timers and preventions
+  const [timeoutSeconds, setTimeoutSeconds] = useState(60);
+  const transactionTimeoutRef = useRef(null);
+  const hasClickedPayRef = useRef(false);
 
   const expert = bookingData?.expert;
   const bookingSummary = bookingData?.bookingSummary || {};
@@ -206,54 +168,80 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
   const gstAmount = 88;
   const totalAmount = consultationFee + platformFee + gstAmount;
 
-  const requiredDocs = useMemo(() => {
-    const summaryText = `${serviceName} ${(bookingSummary.details || []).join(' ')}`.toLowerCase();
-    if (summaryText.includes('gst') || summaryText.includes('business')) {
-      return [
-        { title: 'PAN Card', subtitle: 'Clear copy of PAN card' },
-        { title: 'Aadhaar Card', subtitle: 'Front & back side' },
-        { title: 'Business Proof', subtitle: 'Utility bill, registration or incorporation doc' }
-      ];
+  // Safe Capacitor Haptic trigger
+  const playHaptic = async (type) => {
+    try {
+      if (type === 'light') {
+        await Haptics.impact({ style: ImpactStyle.Light });
+      } else if (type === 'success') {
+        await Haptics.notification({ type: NotificationType.Success });
+      } else if (type === 'error') {
+        await Haptics.notification({ type: NotificationType.Error });
+      }
+    } catch (e) {
+      console.warn('Haptics skipped:', e);
     }
+  };
 
-    return [
-      { title: 'PAN Card', subtitle: 'Clear copy of PAN card' },
-      { title: 'Aadhaar Card', subtitle: 'Front & back side' },
-      { title: 'Form 16 / Salary Slips', subtitle: 'Latest Form 16 or salary slips' }
-    ];
-  }, [bookingSummary.details, serviceName]);
+  // Analytics helper
+  const trackEvent = (eventName, payload = {}) => {
+    console.log(`[Analytics] Event: ${eventName}`, payload);
+    if (window.gtag) {
+      window.gtag('event', eventName, payload);
+    }
+  };
 
+  // Listen to network changes
   useEffect(() => {
-    const scrollContainer = document.querySelector('.app-content');
-    scrollContainer?.scrollTo?.(0, 0);
-    if (scrollContainer) {
-      scrollContainer.scrollTop = 0;
-    }
-    window.scrollTo?.(0, 0);
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Initial Loading Skeleton Shimmer
+    const loaderTimer = setTimeout(() => setLoading(false), 600);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearTimeout(loaderTimer);
+      if (transactionTimeoutRef.current) clearInterval(transactionTimeoutRef.current);
+    };
   }, []);
 
   useEffect(() => {
-    if (!showMoreOptions || selectedMethod === 'Credit / Debit Card') return undefined;
+    trackEvent('payment_screen_viewed');
+  }, []);
 
-    const timer = setInterval(() => {
-      setQrSeconds((seconds) => (seconds > 0 ? seconds - 1 : 179));
+  // Timer logic for pending transactions
+  const startTransactionTimeout = () => {
+    setTimeoutSeconds(60);
+    if (transactionTimeoutRef.current) clearInterval(transactionTimeoutRef.current);
+    transactionTimeoutRef.current = setInterval(() => {
+      setTimeoutSeconds((prev) => {
+        if (prev <= 1) {
+          clearInterval(transactionTimeoutRef.current);
+          handlePaymentFailure('Transaction Timeout. Awaiting authorization took too long.');
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
+  };
 
-    return () => clearInterval(timer);
-  }, [selectedMethod, showMoreOptions]);
-
-  const formatQrTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  const clearTransactionTimeout = () => {
+    if (transactionTimeoutRef.current) {
+      clearInterval(transactionTimeoutRef.current);
+      transactionTimeoutRef.current = null;
+    }
   };
 
   const handleCardNumberChange = (e) => {
     const value = e.target.value;
     const clean = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
     const parts = [];
-    for (let index = 0; index < clean.length; index += 4) {
-      parts.push(clean.substring(index, index + 4));
+    for (let i = 0; i < clean.length; i += 4) {
+      parts.push(clean.substring(i, i + 4));
     }
     setCardNumber(parts.length > 0 ? parts.join(' ') : clean);
   };
@@ -268,145 +256,172 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
     }
   };
 
-  const userProfileName = () => 'Akash Kumar';
-
   const handleVerifyUpi = () => {
     if (!upiId || !upiId.includes('@')) {
-      addNotification?.('Please enter a valid UPI ID format (e.g. name@upi)', 'error');
+      addNotification?.('Enter a valid UPI ID (e.g. name@upi)', 'error');
       return;
     }
-
+    playHaptic('light');
     setIsVerifyingUpi(true);
     setTimeout(() => {
       setIsVerifyingUpi(false);
       setUpiVerified(true);
-      addNotification?.(`UPI ID verified successfully: ${userProfileName()}`, 'success');
-    }, 1200);
-  };
-
-  const completeVerification = async () => {
-    setGatewayStep(4);
-    setGatewayStatusText('Authenticating token signature and finalising transaction...');
-    setLoading(true);
-
-    try {
-      const res = await api.processPayment(totalAmount, selectedMethod, bookingData?.id);
-      setTxnDetails(res);
-
-      setTimeout(() => {
-        setSuccess(true);
-        setGatewayStep(0);
-        addNotification?.('Payment successful! GST invoice generated.', 'success');
-      }, 900);
-    } catch (err) {
-      addNotification?.(err.message, 'error');
-      setGatewayStep(0);
-    } finally {
-      setLoading(false);
-    }
+      addNotification?.(`UPI ID Verified: Akash Kumar`, 'success');
+    }, 900);
   };
 
   const handlePay = () => {
-    if (showMoreOptions) {
-      if (selectedMethod === 'Credit / Debit Card') {
-        if (cardNumber.length < 19) {
-          addNotification?.('Please enter a valid 16-digit card number.', 'error');
-          return;
-        }
-        if (cardExpiry.length < 5) {
-          addNotification?.('Please enter card expiry date in MM/YY format.', 'error');
-          return;
-        }
-        if (cardCvv.length < 3) {
-          addNotification?.('Please enter a valid 3-digit CVV code.', 'error');
-          return;
-        }
-        if (!cardHolder.trim()) {
-          addNotification?.('Please enter the cardholder name.', 'error');
-          return;
-        }
-      } else if (upiId && !upiVerified) {
-        addNotification?.('Please verify your UPI ID before making payment.', 'error');
-        return;
-      }
+    if (isOffline) {
+      addNotification?.('No Internet Connection. Reconnect to process payment.', 'error');
+      return;
     }
 
-    setGatewayStep(1);
-    setGatewayStatusText('Establishing secure payment gateway...');
+    if (hasClickedPayRef.current) return; // Prevent double payment clicks
+
+    // Validation checks
+    if (selectedMethod === 'Credit / Debit Card') {
+      if (cardNumber.length < 19 || cardExpiry.length < 5 || cardCvv.length < 3 || !cardHolder.trim()) {
+        addNotification?.('Please fill out card details completely.', 'error');
+        return;
+      }
+    } else if (selectedMethod !== 'Google Pay' && selectedMethod !== 'Net Banking' && !upiVerified) {
+      addNotification?.('Please verify your UPI ID first.', 'error');
+      return;
+    }
+
+    hasClickedPayRef.current = true;
+    playHaptic('light');
+    trackEvent('payment_initiated', { method: selectedMethod });
+
+    setPaymentState('PENDING');
+    setGatewayStatusText('Establishing secure transaction channels...');
+    startTransactionTimeout();
 
     setTimeout(() => {
-      setGatewayStep(2);
-      setGatewayStatusText('Contacting banking authorization nodes...');
+      setGatewayStatusText('Requesting authorization from bank...');
+      if (selectedMethod === 'Credit / Debit Card') {
+        addNotification?.('Secure code OTP sent. Code is 123456.', 'info');
+      } else if (selectedMethod === 'Google Pay' || selectedMethod === 'PhonePe') {
+        addNotification?.('Awaiting approval in payment app...', 'info');
+      } else if (selectedMethod === 'Net Banking') {
+        addNotification?.('Redirecting to secure bank portal...', 'info');
+      }
+    }, 1200);
+  };
 
-      setTimeout(() => {
-        setGatewayStep(3);
-        setGatewayStatusText('Awaiting customer verification...');
+  const handlePaymentFailure = (reason) => {
+    clearTransactionTimeout();
+    hasClickedPayRef.current = false;
+    setFailureReason(reason);
+    setPaymentState('FAILED');
+    playHaptic('error');
+    trackEvent('payment_failed', { reason });
+  };
 
-        if (selectedMethod === 'Credit / Debit Card') {
-          addNotification?.('Sandbox OTP sent. Use 123456.', 'info');
-        } else {
-          addNotification?.('Payment request sent to UPI app. Approve there.', 'info');
-        }
-      }, 1200);
-    }, 900);
+  const completePayment = async () => {
+    clearTransactionTimeout();
+    setGatewayStatusText('Finalising secure transaction booking...');
+    try {
+      const res = await api.processPayment(totalAmount, selectedMethod, bookingData?.id);
+      setTxnDetails(res);
+      setPaymentState('SUCCESS');
+      playHaptic('success');
+      trackEvent('payment_success', { transactionId: res.transactionId });
+    } catch (err) {
+      handlePaymentFailure(err.message || 'Payment processing failed.');
+    }
   };
 
   const handleVerifyOtp = () => {
     if (bankOtp !== '123456') {
-      addNotification?.('Invalid secure code. Please enter: 123456', 'error');
+      addNotification?.('Invalid OTP code. Please enter 123456.', 'error');
       return;
     }
-    completeVerification();
+    completePayment();
   };
 
-  const handleSimulateUpiApprove = () => {
-    completeVerification();
+  const handleRetry = () => {
+    playHaptic('light');
+    trackEvent('payment_retried');
+    setPaymentState('REVIEW');
+    setBankOtp('');
+    hasClickedPayRef.current = false;
   };
 
-  if (success) {
+  const requiredDocs = useMemo(() => {
+    const summaryText = `${serviceName} ${(bookingSummary.details || []).join(' ')}`.toLowerCase();
+    if (summaryText.includes('gst') || summaryText.includes('business')) {
+      return [
+        { title: 'PAN Card', subtitle: 'Clear copy of PAN card' },
+        { title: 'Aadhaar Card', subtitle: 'Front & back side' },
+        { title: 'Business Proof', subtitle: 'Utility bill, registration or incorporation doc' }
+      ];
+    }
+    return [
+      { title: 'PAN Card', subtitle: 'Clear copy of PAN card' },
+      { title: 'Aadhaar Card', subtitle: 'Front & back side' },
+      { title: 'Form 16 / Salary Slips', subtitle: 'Latest salary slip proof' }
+    ];
+  }, [bookingSummary.details, serviceName]);
+
+  // Loading skeleton screen
+  if (loading) {
+    return (
+      <div className="screen-shell" style={{ paddingInline: '8px', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 45, marginTop: 4 }}>
+          <div className="skeleton-container animate-pulse-slow" style={{ width: 44, height: 44, borderRadius: '50%' }} />
+          <div className="skeleton-container animate-pulse-slow" style={{ width: 120, height: 24, borderRadius: 6 }} />
+          <div className="skeleton-container animate-pulse-slow" style={{ width: 75, height: 30, borderRadius: 15 }} />
+        </div>
+        <div className="skeleton-container animate-pulse-slow" style={{ height: 110, borderRadius: 16, width: '100%' }} />
+        <div className="skeleton-container animate-pulse-slow" style={{ height: 75, borderRadius: 14 }} />
+        <div className="skeleton-container animate-pulse-slow" style={{ height: 100, borderRadius: 14 }} />
+      </div>
+    );
+  }
+
+  // State: SUCCESS Screen view
+  if (paymentState === 'SUCCESS') {
     return (
       <div className="screen-shell payment-success-shell animate-scale-in">
-        <Confetti active={success} />
+        <Confetti active={true} />
 
-        <div className="payment-success-badge">
+        <div className="payment-success-badge" style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
           <Icon name="check" size={34} color="#16a34a" />
         </div>
 
-        <h3 className="payment-success-title">Payment confirmed!</h3>
-        <p className="payment-success-copy">
-          Your appointment is booked with <strong>{expert?.name}</strong>. A GST invoice has been emailed to you.
+        <h3 className="payment-success-title" style={{ color: 'var(--text-primary)' }}>Payment Confirmed!</h3>
+        <p className="payment-success-copy" style={{ color: 'var(--text-secondary)' }}>
+          Your appointment is booked with <strong>{expert?.name || 'Chartered Accountant'}</strong>. A GST invoice email is dispatched.
         </p>
 
-        <div className="payment-success-card">
+        <div className="payment-success-card" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}>
           <div className="payment-success-row">
-            <span>Invoice Number</span>
-            <strong>INV-{txnDetails?.transactionId?.slice(-6)?.toUpperCase() || '883921'}</strong>
+            <span style={{ color: 'var(--text-secondary)' }}>Invoice ID</span>
+            <strong style={{ color: 'var(--text-primary)' }}>INV-{txnDetails?.transactionId?.slice(-6)?.toUpperCase() || '883921'}</strong>
           </div>
           <div className="payment-success-row">
-            <span>Amount Paid</span>
-            <strong className="success-amount">{formatMoney(totalAmount)} (GST Inc.)</strong>
+            <span style={{ color: 'var(--text-secondary)' }}>Amount Paid</span>
+            <strong style={{ color: '#16a34a' }}>{formatMoney(totalAmount)} (GST Inc.)</strong>
           </div>
           <div className="payment-success-row">
-            <span>Date & Slot</span>
-            <strong>
-              {bookingData?.date} · {bookingData?.slot}
+            <span style={{ color: 'var(--text-secondary)' }}>Date & Slot</span>
+            <strong style={{ color: 'var(--text-primary)' }}>
+              {bookingData?.date} · {bookingData?.slot || '11:00 AM'}
             </strong>
           </div>
           <div className="payment-success-row">
-            <span>Mode</span>
-            <strong>{bookingData?.type}</strong>
+            <span style={{ color: 'var(--text-secondary)' }}>Channel Mode</span>
+            <strong style={{ color: 'var(--text-primary)' }}>{bookingData?.type}</strong>
           </div>
-          {isCorporate && companyGst && (
-            <div className="payment-success-row corporate">
-              <span>GSTIN Credited</span>
-              <strong>{companyGst.toUpperCase()}</strong>
-            </div>
-          )}
         </div>
 
         <button
           type="button"
-          onClick={() => onPaymentSuccess(txnDetails)}
+          onClick={() => {
+            playHaptic();
+            onPaymentSuccess(txnDetails);
+          }}
           className="payment-success-cta"
         >
           Begin Document Upload
@@ -415,108 +430,142 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
     );
   }
 
-  const summaryRows = [
-    { icon: 'calendar', label: 'Date', value: bookingData?.date || 'Thu, 18 May 2025' },
-    { icon: 'clock', label: 'Time', value: bookingData?.slot || '11:00 AM' },
-    { icon: 'video', label: 'Mode', value: bookingData?.type || 'Video Call' },
-    { icon: 'user', label: 'For', value: bookingSummary?.entityType || 'Individual' },
-    { icon: 'bolt', label: 'When', value: bookingSummary?.urgency || 'Urgent' },
-    {
-      icon: 'file',
-      label: 'Additional Details',
-      value: (bookingSummary?.details || []).length ? bookingSummary.details.join(', ') : 'Salary, Bank Statement'
-    }
-  ];
+  // State: FAILED Screen view
+  if (paymentState === 'FAILED') {
+    return (
+      <div className="screen-shell payment-success-shell animate-scale-in" style={{ justifyContent: 'center' }}>
+        <div className="payment-success-badge" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+          <Icon name="cross" size={34} color="#dc2626" />
+        </div>
 
-  const reviewPills = [
-    { icon: 'check', label: 'Match 95%', tone: 'success' },
-    { icon: 'clock', label: '24 Hours' },
-    { icon: null, label: 'From ₹999' }
-  ];
+        <h3 className="payment-success-title" style={{ color: 'var(--text-primary)' }}>Payment Failed</h3>
+        <p className="payment-success-copy" style={{ color: 'var(--text-secondary)' }}>
+          Reason: <strong style={{ color: '#dc2626' }}>{failureReason}</strong>
+        </p>
 
-  return (
-    <div className="screen-shell payment-shell animate-fade-in-up">
-      {gatewayStep > 0 && (
-        <div className="payment-gateway-overlay">
-          <div className="payment-gateway-card">
-            {gatewayStep !== 3 ? (
-              <div className="payment-gateway-loading">
-                <div className="spinner-circle payment-spinner" />
-                <div>
-                  <h4 className="payment-gateway-title">Securing Transaction</h4>
-                  <p className="payment-gateway-copy">{gatewayStatusText}</p>
+        <div className="payment-success-card" style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)', padding: 16, fontSize: '0.78rem', color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.45 }}>
+          If money was debited, it will be automatically refunded to your account within 3 business days.
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+          <button
+            type="button"
+            onClick={handleRetry}
+            className="payment-success-cta"
+            style={{ width: '100%', minHeight: 48 }}
+          >
+            Retry Payment
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              playHaptic('light');
+              onBackToBooking();
+            }}
+            className="payment-success-cta"
+            style={{ width: '100%', minHeight: 48, backgroundColor: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}
+          >
+            Cancel &amp; Return
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // State: PENDING Screen view
+  if (paymentState === 'PENDING') {
+    return (
+      <div className="screen-shell payment-success-shell animate-scale-in" style={{ justifyContent: 'center' }}>
+        <div className="payment-gateway-card" style={{ background: 'var(--bg-card)', border: 'none', boxShadow: 'none' }}>
+          <div className="payment-gateway-loading" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="spinner-circle payment-spinner" style={{ margin: '0 auto' }} />
+            <div>
+              <h4 className="payment-gateway-title" style={{ color: 'var(--text-primary)', fontSize: '1.15rem' }}>Processing Transaction</h4>
+              <p className="payment-gateway-copy" style={{ color: 'var(--text-secondary)' }}>{gatewayStatusText}</p>
+            </div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--text-tertiary)', fontWeight: 600 }}>
+              Transaction expires in {timeoutSeconds}s
+            </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--border-color)', marginTop: 20, paddingTop: 16, width: '100%' }}>
+            {selectedMethod === 'Credit / Debit Card' ? (
+              <div className="payment-auth-block" style={{ width: '100%' }}>
+                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 8 }} id="label-otp-enter">Enter Code</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    type="password"
+                    maxLength="6"
+                    placeholder="Enter 6-digit OTP"
+                    value={bankOtp}
+                    onChange={(e) => setBankOtp(e.target.value.replace(/[^0-9]/g, ''))}
+                    aria-labelledby="label-otp-enter"
+                    aria-required="true"
+                    inputmode="numeric"
+                    style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', fontSize: '0.86rem', outline: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyOtp}
+                    className="btn btn-primary"
+                    style={{ padding: '0 16px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800 }}
+                  >
+                    Verify
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.66rem', color: 'var(--text-tertiary)', marginTop: 8 }}>
+                  Demo secure code: <strong style={{ color: 'var(--text-primary)' }}>123456</strong>
                 </div>
               </div>
             ) : (
-              <div className="payment-gateway-auth animate-scale-in">
-                <div className="payment-gateway-badge">
-                  <Icon name="shield" size={16} color="#2563eb" />
-                  <span>Razorpay Secure Gateway</span>
-                </div>
-
-                {selectedMethod === 'Credit / Debit Card' ? (
-                  <div className="payment-auth-block">
-                    <h4 className="payment-auth-title">Enter secure OTP code</h4>
-                    <p className="payment-auth-copy">
-                      We have sent a 6-digit transaction authorization code to your registered mobile number.
-                    </p>
-
-                    <div className="payment-sandbox-note">
-                      Sandbox code: <strong>123456</strong>
-                    </div>
-
-                    <input
-                      type="password"
-                      maxLength="6"
-                      placeholder="Enter 6-digit OTP"
-                      value={bankOtp}
-                      onChange={(e) => setBankOtp(e.target.value.replace(/[^0-9]/g, ''))}
-                      className="payment-auth-input"
-                    />
-
-                    <button type="button" onClick={handleVerifyOtp} className="payment-auth-button">
-                      Verify & Authorize
-                    </button>
-                  </div>
-                ) : (
-                  <div className="payment-auth-block">
-                    <h4 className="payment-auth-title">Awaiting mobile approval</h4>
-                    <p className="payment-auth-copy">
-                      Open your <strong>{selectedMethod}</strong> app and approve the pending collect request of{' '}
-                      <strong>{formatMoney(totalAmount)}</strong>.
-                    </p>
-
-                    <div className="payment-auth-wait">
-                      <div className="spinner-circle payment-spinner-small" />
-                      <span>Awaiting approval trigger...</span>
-                    </div>
-
-                    <button type="button" onClick={handleSimulateUpiApprove} className="payment-auth-button success">
-                      Simulate App Approval
-                    </button>
-                  </div>
-                )}
-
-                <button type="button" onClick={() => setGatewayStep(0)} className="payment-auth-cancel">
-                  Cancel Transaction
+              <div className="payment-auth-block" style={{ width: '100%', textAlign: 'center' }}>
+                <p style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', margin: '0 0 14px' }}>
+                  A secure request has been sent to your <strong>{selectedMethod}</strong> handle. Approve the payment request of {formatMoney(totalAmount)}.
+                </p>
+                <button
+                  type="button"
+                  onClick={completePayment}
+                  className="btn btn-primary"
+                  style={{ width: '100%', minHeight: 48, borderRadius: 10, fontSize: '0.82rem', fontWeight: 800 }}
+                >
+                  Simulate UPI Approval
                 </button>
               </div>
             )}
           </div>
-        </div>
-      )}
 
+          <button
+            type="button"
+            onClick={() => handlePaymentFailure('Transaction cancelled by user.')}
+            className="payment-auth-cancel"
+            style={{ marginTop: 24, width: '100%' }}
+          >
+            Cancel Payment
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // State: Default REVIEW Screen view
+  return (
+    <div className="screen-shell payment-shell animate-fade-in-up">
+      {/* Header bar controls */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%', marginBottom: 4 }}>
         <button
           type="button"
-          onClick={onBackToBooking}
+          onClick={() => {
+            playHaptic('light');
+            trackEvent('payment_cancelled');
+            onBackToBooking();
+          }}
           aria-label="Go back to booking"
           style={{
             width: 44,
             height: 44,
             borderRadius: '50%',
             border: '1px solid var(--border-color)',
-            background: '#ffffff',
+            background: 'var(--bg-card)',
             color: 'var(--text-primary)',
             display: 'inline-flex',
             alignItems: 'center',
@@ -525,9 +574,7 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
             flexShrink: 0
           }}
         >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
+          <Icon name="back" size={20} color="var(--text-primary)" />
         </button>
 
         <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: 'var(--text-primary)', textAlign: 'center' }}>
@@ -538,7 +585,7 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
           borderRadius: 999,
           padding: '6px 12px',
           border: '1px solid rgba(16,185,129,0.3)',
-          background: '#e6fcf5',
+          background: 'rgba(16, 185, 129, 0.08)',
           color: '#10b981',
           fontSize: '0.68rem',
           fontWeight: 800,
@@ -551,27 +598,47 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
         </div>
       </div>
 
+      {/* Offline Alert Banner */}
+      {isOffline && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: 12,
+          padding: '8px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          boxSizing: 'border-box'
+        }} role="alert">
+          <Icon name="info" size={16} color="#ef4444" />
+          <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 600 }}>
+            Offline Mode — Check network connection to continue.
+          </span>
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
         
-        {/* Booking & Expert Summary Card */}
-        <div className="card" style={{ padding: 12, background: '#ffffff', borderRadius: 14, borderColor: 'var(--border-color)' }}>
+        {/* Booking details card */}
+        <div className="card" style={{ padding: 12, background: 'var(--bg-card)', borderRadius: 14, borderColor: 'var(--border-color)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <div style={{ fontSize: '0.88rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-              {serviceName.includes('ITR') ? 'Individual ITR Filing' : 'GST Filing'}
+              {serviceName.includes('ITR') ? 'Individual ITR Filing' : serviceName.includes('GST') ? 'GST Return filing' : 'Corporate Reg'}
             </div>
             <button 
               type="button" 
-              onClick={onBackToBooking} 
+              onClick={() => {
+                playHaptic('light');
+                onBackToBooking();
+              }} 
               style={{ border: 'none', background: 'transparent', color: '#10b981', fontSize: '0.78rem', fontWeight: 800, padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-              </svg>
               Edit
             </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9', marginBottom: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', marginBottom: 8 }}>
             <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '1px solid var(--border-color)', flexShrink: 0 }}>
               <img src={expert?.photo} alt={expert?.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
@@ -599,52 +666,46 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
           </div>
 
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-secondary)', backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface-variant)', padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               📅 {bookingData?.date || 'Thu, 18 May 2025'}
             </span>
-            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-secondary)', backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface-variant)', padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               🕒 {bookingData?.slot || '11:00 AM'}
             </span>
-            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-secondary)', backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface-variant)', padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
               📹 {bookingData?.type || 'Video Call'}
-            </span>
-            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-secondary)', backgroundColor: '#f1f5f9', padding: '4px 8px', borderRadius: 6, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-              👤 {bookingSummary?.entityType || 'Individual'}
             </span>
           </div>
         </div>
 
         {/* Required Documents Card */}
-        <div className="card" style={{ padding: 10, background: '#ffffff', borderRadius: 14, borderColor: 'var(--border-color)' }}>
+        <div className="card" style={{ padding: 10, background: 'var(--bg-card)', borderRadius: 14, borderColor: 'var(--border-color)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <span style={{ fontSize: '0.66rem', fontWeight: 900, color: 'var(--text-secondary)', letterSpacing: '0.3px' }}>REQUIRED DOCUMENTS</span>
-            <span style={{ fontSize: '0.64rem', color: '#10b981', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 2 }}>
-              🔒 100% Safe
-            </span>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {requiredDocs.map((doc) => (
-              <span key={doc.title} style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-primary)', border: '1px solid var(--border-color)', padding: '4px 8px', borderRadius: 999, backgroundColor: '#ffffff', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span key={doc.title} style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--text-primary)', border: '1px solid var(--border-color)', padding: '4px 8px', borderRadius: 999, backgroundColor: 'var(--bg-card)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 📄 {doc.title}
               </span>
             ))}
           </div>
         </div>
 
-        {/* Price Details Card */}
-        <div className="card" style={{ padding: 12, background: '#ffffff', borderRadius: 14, borderColor: 'var(--border-color)' }}>
+        {/* Price Breakdown Card */}
+        <div className="card" style={{ padding: 12, background: 'var(--bg-card)', borderRadius: 14, borderColor: 'var(--border-color)' }}>
           <div style={{ fontSize: '0.66rem', fontWeight: 900, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.3px' }}>Price Details</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
-              <span>Expert Fee</span>
+              <span>CA Advisor Fee</span>
               <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>{formatMoney(consultationFee)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
-              <span>Platform Fee</span>
+              <span>Advisory Platform Fee</span>
               <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>{formatMoney(platformFee)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-secondary)' }}>
-              <span>GST (18%)</span>
+              <span>Integrated GST (18%)</span>
               <span style={{ color: 'var(--text-primary)', fontWeight: 800 }}>{formatMoney(gstAmount)}</span>
             </div>
             <div style={{ borderTop: '1px dashed var(--border-color)', margin: '4px 0' }} />
@@ -655,8 +716,8 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
           </div>
         </div>
 
-        {/* Payment Mode Selector Card */}
-        <div className="card" style={{ padding: 12, background: '#ffffff', borderRadius: 14, borderColor: 'var(--border-color)' }}>
+        {/* Payment mode selector details */}
+        <div className="card" style={{ padding: 12, background: 'var(--bg-card)', borderRadius: 14, borderColor: 'var(--border-color)' }}>
           <div style={{ fontSize: '0.66rem', fontWeight: 900, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.3px' }}>Select Payment Mode</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {paymentMethods.map((method) => {
@@ -666,21 +727,23 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
                   key={method.id}
                   type="button"
                   onClick={() => {
+                    playHaptic('light');
                     setSelectedMethod(method.name);
-                    setShowMoreOptions(true);
+                    trackEvent('payment_method_selected', { method: method.name });
                   }}
                   style={{
                     padding: '8px 12px',
                     borderRadius: 8,
                     border: active ? '1.5px solid #10b981' : '1px solid var(--border-color)',
-                    background: active ? 'rgba(16, 185, 129, 0.05)' : '#ffffff',
+                    background: active ? 'rgba(16, 185, 129, 0.05)' : 'var(--bg-card)',
                     color: active ? '#10b981' : 'var(--text-primary)',
                     fontSize: '0.72rem',
                     fontWeight: 800,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 6
+                    gap: 6,
+                    minHeight: 40
                   }}
                 >
                   <span style={{ 
@@ -696,15 +759,43 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
             })}
           </div>
 
-          {/* Inline fields if Card is chosen */}
+          {/* Conditional field render for Net Banking */}
+          {selectedMethod === 'Net Banking' && (
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--border-color)', paddingTop: 10 }}>
+              <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-secondary)', marginBottom: 4 }} id="label-bank-select">Choose Bank</label>
+              <select
+                value={selectedBank}
+                onChange={(e) => setSelectedBank(e.target.value)}
+                aria-labelledby="label-bank-select"
+                style={{
+                  width: '100%',
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-card)',
+                  color: 'var(--text-primary)',
+                  fontSize: '0.78rem',
+                  outline: 'none',
+                  minHeight: 44
+                }}
+              >
+                {popularBanks.map((bank) => (
+                  <option key={bank.id} value={bank.id}>{bank.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Conditional field render for Cards */}
           {selectedMethod === 'Credit / Debit Card' && (
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #f1f5f9', paddingTop: 10 }}>
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--border-color)', paddingTop: 10 }}>
               <input
                 type="text"
                 placeholder="Cardholder Name"
                 value={cardHolder}
                 onChange={(e) => setCardHolder(e.target.value.replace(/[^a-zA-Z\s]/g, ''))}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color)', fontSize: '0.72rem' }}
+                aria-label="Cardholder Name"
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.76rem', boxSizing: 'border-box' }}
               />
               <input
                 type="text"
@@ -712,7 +803,9 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
                 placeholder="Card Number"
                 value={cardNumber}
                 onChange={handleCardNumberChange}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color)', fontSize: '0.72rem', fontFamily: 'monospace' }}
+                aria-label="Card Number"
+                inputmode="numeric"
+                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.76rem', fontFamily: 'monospace', boxSizing: 'border-box' }}
               />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <input
@@ -721,7 +814,9 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
                   placeholder="MM/YY"
                   value={cardExpiry}
                   onChange={handleExpiryChange}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color)', fontSize: '0.72rem' }}
+                  aria-label="Card Expiration Date"
+                  inputmode="numeric"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.76rem', boxSizing: 'border-box' }}
                 />
                 <input
                   type="password"
@@ -729,15 +824,17 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
                   placeholder="CVV"
                   value={cardCvv}
                   onChange={(e) => setCardCvv(e.target.value.replace(/[^0-9]/g, ''))}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color)', fontSize: '0.72rem' }}
+                  aria-label="Security CVV Code"
+                  inputmode="numeric"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.76rem', boxSizing: 'border-box' }}
                 />
               </div>
             </div>
           )}
 
-          {/* Inline fields if UPI option is chosen and is not Google Pay */}
-          {selectedMethod !== 'Credit / Debit Card' && selectedMethod !== 'Google Pay' && (
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #f1f5f9', paddingTop: 10 }}>
+          {/* Conditional field render for non-automatic UPI handles */}
+          {selectedMethod !== 'Credit / Debit Card' && selectedMethod !== 'Google Pay' && selectedMethod !== 'Net Banking' && (
+            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid var(--border-color)', paddingTop: 10 }}>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input
                   type="text"
@@ -747,35 +844,37 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
                     setUpiId(e.target.value);
                     setUpiVerified(false);
                   }}
-                  style={{ flex: 1, padding: '8px 10px', borderRadius: 6, border: '1px solid var(--border-color)', fontSize: '0.72rem' }}
+                  aria-label="UPI Identification Address"
+                  style={{ flex: 1, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', fontSize: '0.76rem', boxSizing: 'border-box' }}
                 />
                 <button
                   type="button"
                   onClick={handleVerifyUpi}
                   disabled={isVerifyingUpi}
                   style={{
-                    padding: '0 12px',
-                    borderRadius: 6,
+                    padding: '0 14px',
+                    borderRadius: 8,
                     border: 'none',
-                    background: upiVerified ? '#e6fcf5' : 'var(--primary)',
+                    background: upiVerified ? 'rgba(16, 185, 129, 0.08)' : 'var(--primary)',
                     color: upiVerified ? '#10b981' : '#ffffff',
                     fontSize: '0.72rem',
                     fontWeight: 800,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    minWidth: 75
                   }}
                 >
                   {isVerifyingUpi ? '...' : upiVerified ? 'Verified' : 'Verify'}
                 </button>
               </div>
               {upiVerified && (
-                <div style={{ fontSize: '0.62rem', color: '#10b981', fontWeight: 600 }}>Linked to {userProfileName()}</div>
+                <div style={{ fontSize: '0.62rem', color: '#10b981', fontWeight: 600 }}>Linked to Akash Kumar</div>
               )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Floating Action Pay Button */}
+      {/* Checkout Pay Trigger bottom bar */}
       <div
         style={{
           position: 'fixed',
@@ -788,14 +887,14 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
         <button
           type="button"
           onClick={handlePay}
-          disabled={loading}
+          disabled={isOffline}
           style={{
             width: '100%',
             minHeight: 52,
             borderRadius: 12,
             fontSize: '0.9rem',
             fontWeight: 800,
-            backgroundColor: 'var(--primary)',
+            backgroundColor: isOffline ? 'var(--text-tertiary)' : 'var(--primary)',
             color: '#ffffff',
             border: 'none',
             display: 'flex',
@@ -803,14 +902,12 @@ export default function Payment({ bookingData, onBackToBooking, onPaymentSuccess
             justifyContent: 'center',
             gap: 12,
             boxShadow: 'var(--shadow-lg)',
-            cursor: 'pointer'
+            cursor: isOffline ? 'not-allowed' : 'pointer'
           }}
+          aria-label={`Confirm payment of ${formatMoney(totalAmount)}`}
         >
-          <span>{loading ? 'Processing...' : `Pay ${formatMoney(totalAmount)}`}</span>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="5" y1="12" x2="19" y2="12" />
-            <polyline points="12 5 19 12 12 19" />
-          </svg>
+          <span>{isOffline ? 'Offline' : `Pay ${formatMoney(totalAmount)}`}</span>
+          {!isOffline && <Icon name="arrow" size={18} color="#ffffff" />}
         </button>
       </div>
     </div>

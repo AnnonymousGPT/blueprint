@@ -11,6 +11,13 @@ import Payment from './screens/Payment';
 import Tracking from './screens/Tracking';
 import Documents from './screens/Documents';
 import Profile from './screens/Profile';
+import Splash from './screens/Splash';
+import ExpertDashboard from './screens/ExpertDashboard';
+import ExpertCases from './screens/ExpertCases';
+import ExpertCaseDetail from './screens/ExpertCaseDetail';
+import ExpertCalendar from './screens/ExpertCalendar';
+import ExpertProfile from './screens/ExpertProfile';
+import ChatBox from './components/ChatBox';
 
 // Import Components
 import StatusBar from './components/StatusBar';
@@ -31,20 +38,85 @@ export default function App() {
   
   // Navigation & Wizard states
   const [activeTab, setActiveTab] = useState('home'); // home, requests, documents, profile
+  const [expertActiveTab, setExpertActiveTab] = useState('dashboard'); // dashboard, cases, calendar, profile
+  const [selectedExpertRequest, setSelectedExpertRequest] = useState(null); // expert case drill-down detail
+  const [activeChatClientUserId, setActiveChatClientUserId] = useState(null); // client chat drawer overlay
   const [activeWizardConfig, setActiveWizardConfig] = useState(null); // when not null, shows Wizard screen
-  const [bookingData, setBookingData] = useState(null); // when not null, shows Booking screen
-  const [paymentData, setPaymentData] = useState(null); // when not null, shows Checkout screen
+  const [bookingData, setBookingData] = useState(() => {
+    try {
+      const saved = localStorage.getItem('app_booking_data');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [paymentData, setPaymentData] = useState(() => {
+    try {
+      const saved = localStorage.getItem('app_payment_data');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const [trackingRequestId, setTrackingRequestId] = useState(null); // highlights specific request in tracking
   const [forceShowLogin, setForceShowLogin] = useState(false); // forces login screen overlay
+  const [showSplash, setShowSplash] = useState(() => {
+    return !localStorage.getItem('accessToken');
+  });
+
+  const handleSplashFinish = (action) => {
+    setShowSplash(false);
+    if (action === 'login') {
+      setForceShowLogin(true);
+    }
+  };
   
   // App Global State (Live modifications)
-  const [requests, setRequests] = useState([]);
-  const [documents, setDocuments] = useState([]);
+  const [requests, setRequests] = useState(() => {
+    try {
+      const saved = localStorage.getItem('app_cached_requests');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [documents, setDocuments] = useState(() => {
+    try {
+      const saved = localStorage.getItem('app_cached_requests');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.flatMap(r => r.documents || []);
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
   const [notifications, setNotifications] = useState([]);
+  const [showNotificationsInbox, setShowNotificationsInbox] = useState(false);
+  const [notificationsHistory, setNotificationsHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('app_notifications_history');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    const defaults = [
+      { id: '1', title: 'PAN Card Verified', body: 'Government registry verification successfully completed.', time: '2 hours ago', read: false, type: 'success' },
+      { id: '2', title: 'CA Partner Assigned', body: 'CA Akash Kumar has been assigned to prepare your individual ITR.', time: '1 day ago', read: true, type: 'info' },
+      { id: '3', title: 'Payment Confirmed', body: 'Tax filing platform receipt generated for INV-883921.', time: '2 days ago', read: true, type: 'success' }
+    ];
+    try {
+      localStorage.setItem('app_notifications_history', JSON.stringify(defaults));
+    } catch {}
+    return defaults;
+  });
 
   // Simulator controls
   const [simulateEmptyState, setSimulateEmptyState] = useState(false);
   const [simulateErrorState, setSimulateErrorState] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [activePrivacyTab, setActivePrivacyTab] = useState('policy');
+  const [confirmDeleteText, setConfirmDeleteText] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // Sync theme change on document body
   useEffect(() => {
@@ -63,6 +135,7 @@ export default function App() {
             const res = await api.getRequests().catch(() => null);
             if (res && res.success && res.requests) {
               setRequests(res.requests);
+              localStorage.setItem('app_cached_requests', JSON.stringify(res.requests));
               const allDocs = res.requests.flatMap(r => r.documents || []);
               setDocuments(allDocs);
             }
@@ -175,20 +248,38 @@ export default function App() {
       setActiveWizardConfig(null);
       return;
     }
-    // Proceed to booking screen
-    setBookingData({
+    const data = {
       serviceName: recommendedServiceName,
       answers: wizardAnswers
-    });
+    };
+    localStorage.setItem('app_booking_data', JSON.stringify(data));
+    setBookingData(data);
     setActiveWizardConfig(null);
   };
 
   const handleCompleteBooking = (selectedDetails) => {
-    setPaymentData({
+    const data = {
       ...selectedDetails,
       bookingSummary: bookingData?.answers || {}
-    });
+    };
+    localStorage.setItem('app_payment_data', JSON.stringify(data));
+    setPaymentData(data);
+    localStorage.removeItem('app_booking_data');
     setBookingData(null);
+  };
+
+  const handleBackToBooking = () => {
+    // Reconstruct bookingData from paymentData properties if going back
+    if (paymentData) {
+      const data = {
+        serviceName: paymentData.serviceName,
+        answers: paymentData.bookingSummary || {}
+      };
+      localStorage.setItem('app_booking_data', JSON.stringify(data));
+      setBookingData(data);
+    }
+    localStorage.removeItem('app_payment_data');
+    setPaymentData(null);
   };
 
   const handlePaymentSuccess = async () => {
@@ -214,8 +305,10 @@ export default function App() {
       // Re-fetch requests
       const res = await api.getRequests();
       setRequests(res.requests);
+      localStorage.setItem('app_cached_requests', JSON.stringify(res.requests));
       
       setTrackingRequestId(newReq.id);
+      localStorage.removeItem('app_payment_data');
       setPaymentData(null);
       setActiveTab('requests'); // Redirect to tracking timeline screen!
     } catch (err) {
@@ -238,13 +331,438 @@ export default function App() {
       setActiveTab('requests');
     } else if (menuId === 'saved-docs') {
       setActiveTab('documents');
+    } else if (menuId === 'privacy') {
+      setShowPrivacyModal(true);
     } else {
       addNotification(`Opened ${menuLabel} panel (Prototype Mode)`, 'info');
     }
   };
 
+  const renderPrivacyModal = () => {
+    if (!showPrivacyModal) return null;
+
+    const handleDeleteAccount = async () => {
+      if (confirmDeleteText !== 'DELETE') {
+        addNotification('Please type DELETE to confirm.', 'error');
+        return;
+      }
+      setIsDeletingAccount(true);
+      try {
+        await api.deleteAccount();
+        addNotification('Your account has been permanently deleted.', 'success');
+        setShowPrivacyModal(false);
+        handleLogout();
+      } catch (err) {
+        addNotification(err.message || 'Failed to delete account', 'error');
+      } finally {
+        setIsDeletingAccount(false);
+        setConfirmDeleteText('');
+      }
+    };
+
+    return (
+      <div 
+        style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 100,
+          padding: '16px'
+        }}
+      >
+        <div 
+          className="card animate-scale-in"
+          style={{
+            backgroundColor: 'var(--bg-card)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '24px',
+            width: '100%',
+            maxWidth: '500px',
+            maxHeight: '85vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: 'var(--shadow-lg)'
+          }}
+        >
+          {/* Header */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid var(--border-color)' }}>
+            <h3 className="title-accent" style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--text-primary)', margin: 0 }}>
+              Privacy & Compliance
+            </h3>
+            <button 
+              onClick={() => {
+                setShowPrivacyModal(false);
+                setActivePrivacyTab('policy');
+              }}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'var(--text-secondary)', fontSize: '1.25rem', padding: '4px'
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', backgroundColor: 'var(--bg-surface)', padding: '4px', gap: '4px' }}>
+            {[
+              { id: 'policy', label: 'Privacy' },
+              { id: 'terms', label: 'Terms' },
+              { id: 'retention', label: 'Retention' },
+              { id: 'delete', label: 'Delete User' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActivePrivacyTab(tab.id)}
+                style={{
+                  flex: 1, padding: '8px 4px', border: 'none', borderRadius: '10px',
+                  fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer',
+                  backgroundColor: activePrivacyTab === tab.id ? 'var(--bg-card)' : 'transparent',
+                  color: activePrivacyTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)'
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Content */}
+          <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {activePrivacyTab === 'policy' && (
+              <div>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>Privacy Policy</h4>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                  We value your privacy. Blueprint Advisor collects necessary metadata and files (e.g., PAN, Aadhar, GST registration certificates, and ITR details) exclusively to facilitate professional filing and consultancy services. All transmissions are encrypted using SSL, and files are stored in access-controlled, private storage vaults.
+                </p>
+              </div>
+            )}
+
+            {activePrivacyTab === 'terms' && (
+              <div>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>Terms of Service</h4>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                  By uploading tax files and records, you confirm that you are the rightful owner or authorized representative of the taxpayer profile. Any fraudulent documentation will lead to immediate service termination and reporting to relevant financial authorities.
+                </p>
+              </div>
+            )}
+
+            {activePrivacyTab === 'retention' && (
+              <div>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 8px 0' }}>Data Retention & Storage</h4>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                  Documents and advisory cases are retained for 3 years in our archive systems to assist in case of subsequent tax audits, in compliance with national tax compliance guidelines. Files are automatically purged after this period. You can request deletion of active records earlier by initiating account deletion.
+                </p>
+              </div>
+            )}
+
+            {activePrivacyTab === 'delete' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 800, color: '#ef4444', margin: 0 }}>Permanently Delete Account</h4>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                  This action is irreversible. All your submitted requests, uploaded document copies, active cases, and chat records will be permanently deleted from our servers.
+                </p>
+
+                <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '12px', padding: '12px' }}>
+                  <span style={{ fontSize: '0.75rem', color: '#ef4444', fontWeight: 700 }}>
+                    Please type <strong>DELETE</strong> in the box below to confirm:
+                  </span>
+                  <input
+                    type="text"
+                    value={confirmDeleteText}
+                    onChange={(e) => setConfirmDeleteText(e.target.value)}
+                    placeholder="DELETE"
+                    style={{
+                      width: '100%', padding: '10px', marginTop: '8px', border: '1.5px solid var(--border-color)',
+                      borderRadius: '8px', backgroundColor: 'var(--bg-surface)', color: 'var(--text-primary)',
+                      fontSize: '0.8rem', boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={isDeletingAccount || confirmDeleteText !== 'DELETE'}
+                  className="btn btn-secondary"
+                  style={{
+                    backgroundColor: confirmDeleteText === 'DELETE' ? '#ef4444' : 'transparent',
+                    color: confirmDeleteText === 'DELETE' ? '#ffffff' : 'var(--text-tertiary)',
+                    borderColor: confirmDeleteText === 'DELETE' ? '#ef4444' : 'var(--border-color)',
+                    fontWeight: 800, fontSize: '0.8rem', padding: '12px', cursor: confirmDeleteText === 'DELETE' ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  {isDeletingAccount ? 'Deleting Account...' : '⚠️ Delete My Account'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderNotificationsInbox = () => {
+    if (!showNotificationsInbox) return null;
+
+    const handleMarkAllRead = () => {
+      const updated = notificationsHistory.map(n => ({ ...n, read: true }));
+      setNotificationsHistory(updated);
+      try {
+        localStorage.setItem('app_notifications_history', JSON.stringify(updated));
+      } catch {}
+    };
+
+    const handleClose = () => {
+      handleMarkAllRead();
+      setShowNotificationsInbox(false);
+    };
+
+    return (
+      <div 
+        onClick={handleClose}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.45)',
+          backdropFilter: 'blur(3px)',
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'center'
+        }}
+      >
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className="animate-fade-in-up"
+          style={{
+            width: '100%',
+            maxWidth: '420px',
+            backgroundColor: 'var(--bg-card)',
+            borderTopLeftRadius: '24px',
+            borderTopRightRadius: '24px',
+            padding: '20px',
+            maxHeight: '65%',
+            display: 'flex',
+            flexDirection: 'column',
+            boxSizing: 'border-box',
+            boxShadow: '0 -4px 20px rgba(0,0,0,0.1)'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+              Notifications Inbox
+            </h3>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={handleMarkAllRead}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#3b82f6',
+                  fontSize: '0.74rem',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  minHeight: 32
+                }}
+              >
+                Mark all read
+              </button>
+              <button 
+                type="button"
+                onClick={handleClose}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '1.4rem',
+                  color: 'var(--text-secondary)',
+                  width: 32,
+                  height: 32,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingBottom: 20 }}>
+            {notificationsHistory.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '24px 10px', fontSize: '0.78rem' }}>
+                No notifications yet.
+              </div>
+            ) : (
+              notificationsHistory.map(item => (
+                <div 
+                  key={item.id}
+                  style={{
+                    padding: 12,
+                    borderRadius: 12,
+                    border: '1px solid var(--border-color)',
+                    background: item.read ? 'transparent' : 'rgba(59, 130, 246, 0.03)',
+                    display: 'flex',
+                    gap: 10,
+                    alignItems: 'flex-start'
+                  }}
+                >
+                  <span style={{ fontSize: '1.2rem' }}>
+                    {item.type === 'success' ? '✅' : '📢'}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <h4 style={{ margin: 0, fontSize: '0.78rem', fontWeight: 800, color: 'var(--text-primary)' }}>{item.title}</h4>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.72rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>{item.body}</p>
+                    <span style={{ fontSize: '0.62rem', color: 'var(--text-tertiary)', display: 'block', marginTop: 4 }}>{item.time}</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const refreshRequests = async () => {
+    try {
+      const res = await api.getRequests();
+      if (res && res.requests) {
+        setRequests(res.requests);
+        localStorage.setItem('app_cached_requests', JSON.stringify(res.requests));
+        if (selectedExpertRequest) {
+          const updatedReq = res.requests.find(r => r.id === selectedExpertRequest.id);
+          if (updatedReq) setSelectedExpertRequest(updatedReq);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to refresh requests:', e);
+    }
+  };
+
+  const renderBottomBar = () => {
+    if (showSplash || forceShowLogin || activeWizardConfig || bookingData || paymentData) return null;
+
+    if (user && user.role === 'EXPERT') {
+      return (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          borderTop: '1px solid var(--border-color)',
+          backgroundColor: 'var(--bg-card)',
+          height: 60,
+          boxSizing: 'border-box',
+          flexShrink: 0
+        }}>
+          {[
+            { key: 'dashboard', label: 'Home', icon: '🏠' },
+            { key: 'cases', label: 'Cases', icon: '💼' },
+            { key: 'calendar', label: 'Calendar', icon: '📅' },
+            { key: 'profile', label: 'Profile', icon: '👤' }
+          ].map(tab => {
+            const isActive = expertActiveTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => {
+                  setSelectedExpertRequest(null);
+                  setExpertActiveTab(tab.key);
+                }}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  background: 'none',
+                  border: 'none',
+                  color: isActive ? '#3b82f6' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontWeight: isActive ? 800 : 500,
+                  fontSize: '0.66rem'
+                }}
+                aria-label={`Switch to expert ${tab.label} tab`}
+              >
+                <span style={{ fontSize: '1.2rem' }}>{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
+    return <BottomBar activeTab={activeTab} setActiveTab={setActiveTab} />;
+  };
+
+  const renderExpertAppScreen = () => {
+    if (selectedExpertRequest) {
+      return (
+        <ExpertCaseDetail 
+          request={selectedExpertRequest}
+          onBack={() => setSelectedExpertRequest(null)}
+          onOpenChat={setActiveChatClientUserId}
+          addNotification={addNotification}
+          onRefresh={refreshRequests}
+        />
+      );
+    }
+
+    switch (expertActiveTab) {
+      case 'dashboard':
+        return (
+          <ExpertDashboard 
+            user={user}
+            requests={requests}
+            onSelectCase={setSelectedExpertRequest}
+            onViewCalendar={() => setExpertActiveTab('calendar')}
+            onOpenProfile={() => setExpertActiveTab('profile')}
+          />
+        );
+      case 'cases':
+        return (
+          <ExpertCases 
+            requests={requests}
+            onSelectCase={setSelectedExpertRequest}
+          />
+        );
+      case 'calendar':
+        return (
+          <ExpertCalendar 
+            requests={requests}
+            addNotification={addNotification}
+          />
+        );
+      case 'profile':
+        return (
+          <ExpertProfile 
+            user={user}
+            onLogout={handleLogout}
+            addNotification={addNotification}
+            theme={theme}
+            setTheme={setTheme}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
   // Render Inner App Screen Views
   const renderAppScreen = () => {
+    if (user && user.role === 'EXPERT') {
+      return renderExpertAppScreen();
+    }
+
     if (simulateErrorState) {
       return (
         <div style={{ padding: '24px', textAlign: 'center', backgroundColor: 'var(--bg-phone)', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '16px' }}>
@@ -299,13 +817,7 @@ export default function App() {
       return (
         <Payment 
           bookingData={paymentData}
-          onBackToBooking={() => {
-            setBookingData({
-              serviceName: paymentData.serviceName,
-              answers: paymentData.bookingSummary || {}
-            });
-            setPaymentData(null);
-          }}
+          onBackToBooking={handleBackToBooking}
           onPaymentSuccess={handlePaymentSuccess}
           addNotification={addNotification}
         />
@@ -319,14 +831,15 @@ export default function App() {
           <Home 
             userProfile={user || { name: 'Guest', photo: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80', isGuest: true }} 
             stats={getStats()}
-            recentRequests={simulateEmptyState ? [] : requests.slice(0, 2)}
+            recentRequests={simulateEmptyState ? [] : requests}
             onSelectService={handleSelectService}
             onSelectRequest={handleSelectRequest}
             onViewAllRequests={() => {
               setTrackingRequestId(null);
               setActiveTab('requests');
             }}
-            onSupportClick={() => addNotification('Connecting live client support chat...', 'success')}
+            onBellClick={() => setShowNotificationsInbox(true)}
+            unreadCount={notificationsHistory.filter(n => !n.read).length}
             onOpenProfile={() => setActiveTab('profile')}
           />
         );
@@ -360,6 +873,8 @@ export default function App() {
             onLogout={handleLogout}
             onLoginTrigger={() => setForceShowLogin(true)}
             addNotification={addNotification}
+            theme={theme}
+            setTheme={setTheme}
           />
         );
       default:
@@ -404,6 +919,7 @@ export default function App() {
             />
           ))}
         </div>
+        {renderNotificationsInbox()}
 
         {/* Main interactive screen viewport */}
         <div className="app-content mobile-safe-space">
@@ -424,10 +940,18 @@ export default function App() {
           )}
         </div>
 
-        {/* Bottom Tab Bar (Only when not in splash, login or checkout overlays) */}
-        {!forceShowLogin && !activeWizardConfig && !bookingData && !paymentData && (
-          <BottomBar activeTab={activeTab} setActiveTab={setActiveTab} />
+        {activeChatClientUserId && user && (
+          <ChatBox 
+            currentUserId={user.id}
+            otherUserId={activeChatClientUserId}
+            otherUserName="Advisor Client"
+            onClose={() => setActiveChatClientUserId(null)}
+            addNotification={addNotification}
+          />
         )}
+        {/* Bottom Tab Bar */}
+        {renderBottomBar()}
+        {renderPrivacyModal()}
       </div>
     );
   }
@@ -447,10 +971,13 @@ export default function App() {
             />
           ))}
         </div>
+        {renderNotificationsInbox()}
 
         {/* Main interactive screen viewport */}
         <div className="app-content" style={{ height: '100vh', width: '100vw', borderRadius: 0, border: 'none', boxShadow: 'none' }}>
-          {(forceShowLogin || (paymentData && !user)) ? (
+          {showSplash ? (
+            <Splash onFinish={handleSplashFinish} />
+          ) : (forceShowLogin || (paymentData && !user)) ? (
             <Login 
               onLoginSuccess={(userData) => {
                 handleLoginSuccess(userData);
@@ -467,10 +994,17 @@ export default function App() {
           )}
         </div>
 
-        {/* Bottom Tab Bar */}
-        {!forceShowLogin && !activeWizardConfig && !bookingData && !paymentData && (
-          <BottomBar activeTab={activeTab} setActiveTab={setActiveTab} />
+        {activeChatClientUserId && user && (
+          <ChatBox 
+            currentUserId={user.id}
+            otherUserId={activeChatClientUserId}
+            otherUserName="Advisor Client"
+            onClose={() => setActiveChatClientUserId(null)}
+            addNotification={addNotification}
+          />
         )}
+        {/* Bottom Tab Bar */}
+        {renderBottomBar()}
       </div>
     );
   }
@@ -594,7 +1128,9 @@ export default function App() {
 
         {/* Main interactive screen viewport */}
         <div className="app-content">
-          {(forceShowLogin || (paymentData && !user)) ? (
+          {showSplash ? (
+            <Splash onFinish={handleSplashFinish} />
+          ) : (forceShowLogin || (paymentData && !user)) ? (
             <Login 
               onLoginSuccess={(userData) => {
                 handleLoginSuccess(userData);
@@ -612,7 +1148,7 @@ export default function App() {
         </div>
 
         {/* Bottom Tab Bar (Only when not in splash, login or checkout overlays) */}
-        {!forceShowLogin && !activeWizardConfig && !bookingData && !paymentData && (
+        {!showSplash && !forceShowLogin && !activeWizardConfig && !bookingData && !paymentData && (
           <BottomBar activeTab={activeTab} setActiveTab={setActiveTab} />
         )}
 
@@ -620,6 +1156,7 @@ export default function App() {
         <div className="phone-bottom-bar">
           <div className="android-pill" />
         </div>
+        {renderPrivacyModal()}
       </div>
     </div>
   );

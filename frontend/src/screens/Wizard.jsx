@@ -1,7 +1,88 @@
-import { useMemo, useState } from 'react';
-import { TrustStrip } from '../components/UxBlocks';
+import { useMemo, useState, useEffect } from 'react';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+
+function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2.2 }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: color,
+    strokeWidth,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': true
+  };
+
+  switch (name) {
+    case 'back':
+      return (
+        <svg {...common}>
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+      );
+    case 'info':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <line x1="12" y1="8" x2="12" y2="12" />
+          <line x1="12" y1="16" x2="12.01" y2="16" />
+        </svg>
+      );
+    case 'check':
+      return (
+        <svg {...common}>
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      );
+    case 'star':
+      return (
+        <svg {...common} fill="currentColor" stroke="none">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
 
 export default function Wizard({ initialServiceId, onFinishWizard }) {
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+
+  // Monitor network connection changes
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Safe Capacitor Haptics
+  const playHaptic = async () => {
+    try {
+      await Haptics.impact({ style: ImpactStyle.Light });
+    } catch (e) {
+      if (navigator.vibrate) navigator.vibrate(30);
+    }
+  };
+
+  // Analytics logger
+  const trackEvent = (eventName, payload = {}) => {
+    console.log(`[Analytics] Event: ${eventName}`, payload);
+    if (window.gtag) {
+      window.gtag('event', eventName, payload);
+    }
+  };
+
+  useEffect(() => {
+    trackEvent('wizard_screen_viewed');
+  }, []);
+
   const serviceOptions = useMemo(() => ([
     { id: 'itr', label: 'File ITR', desc: 'Income tax filing', icon: 'IT' },
     { id: 'gst', label: 'GST Filing', desc: 'Returns + compliance', icon: 'GS' },
@@ -10,42 +91,79 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
     { id: 'expert', label: 'Talk to Expert', desc: 'Quick consult', icon: 'EX' }
   ]), []);
 
-  const detailOptions = useMemo(() => ([
-    'Salary / Form 16',
-    'Bank Statement',
-    'Capital Gains',
-    'Notice / Demand'
-  ]), []);
+  // Dynamic Detail questions based on selected serviceType
+  const getDetailOptions = (serviceType) => {
+    switch (serviceType) {
+      case 'itr':
+        return [
+          'Salary / Form 16',
+          'Bank Statements',
+          'Capital Gains',
+          'Crypto Declarations',
+          'Foreign Asset Income'
+        ];
+      case 'gst':
+        return [
+          'New GST Registration',
+          'Monthly Return filings',
+          'Annual Return GSTR-9',
+          'GST Notice audit support'
+        ];
+      case 'business':
+        return [
+          'Private Limited (Pvt Ltd)',
+          'Limited Liability Partnership (LLP)',
+          'Sole Proprietorship',
+          'MSME Udyam Registration'
+        ];
+      case 'loan':
+        return [
+          'Business Expansion Loan',
+          'Mudra Scheme Assistance',
+          'Startup Grant filing',
+          'Project DPR Projections'
+        ];
+      default:
+        return [
+          'Income tax audit',
+          'Tax planning counsel',
+          'GST notice defense',
+          'Corporate legal advisory'
+        ];
+    }
+  };
 
   const [answers, setAnswers] = useState({
     serviceType: initialServiceId || 'itr',
     entityType: initialServiceId === 'business' ? 'Business' : 'Individual',
     urgency: 'Urgent',
     details: initialServiceId === 'business'
-      ? ['Business Income']
-      : ['Salary / Form 16', 'Bank Statement']
+      ? ['Private Limited (Pvt Ltd)']
+      : ['Salary / Form 16', 'Bank Statements']
   });
+
+  const detailOptions = useMemo(() => getDetailOptions(answers.serviceType), [answers.serviceType]);
 
   const serviceMeta = {
     itr: {
-      individual: { title: 'Individual ITR Filing', eta: '24 Hours', price: 'From ₹999', reason: ['You selected Individual', 'Urgent filing', 'Salary related'] },
-      business: { title: 'Corporate ITR Filing', eta: '48 Hours', price: 'From ₹1,499', reason: ['You selected Business', 'Annual filing', 'Compliance ready'] }
+      individual: { title: 'Individual ITR Filing', eta: '24 Hours', price: 'From ₹999', reason: ['Individual filing', 'Salary & investment review'] },
+      business: { title: 'Corporate ITR Filing', eta: '48 Hours', price: 'From ₹1,499', reason: ['Business tax return', 'GST cross-audited'] }
     },
     gst: {
-      individual: { title: 'GST Filing', eta: '2-3 Days', price: 'From ₹1,499', reason: ['Returns cleanup', 'Monthly filing', 'Tax support'] },
-      business: { title: 'GST Filing', eta: '2-3 Days', price: 'From ₹1,499', reason: ['You selected Business', 'Returns + audit', 'Compliance ready'] }
+      individual: { title: 'Individual GST Filing', eta: '2-3 Days', price: 'From ₹1,499', reason: ['Returns reconciliation', 'Lumpsum billing check'] },
+      business: { title: 'Corporate GST Filing', eta: '2-3 Days', price: 'From ₹1,999', reason: ['Corporate compliance', 'Reconciliation audit ready'] }
     },
     business: {
-      individual: { title: 'Business Registration', eta: '5-7 Days', price: 'From ₹4,999', reason: ['Startup setup', 'MCA steps', 'Document ready'] },
-      business: { title: 'Business Registration', eta: '5-7 Days', price: 'From ₹4,999', reason: ['Startup setup', 'LLP / Pvt Ltd', 'Document ready'] }
+      individual: { title: 'Business Registration', eta: '5-7 Days', price: 'From ₹4,999', reason: ['Proprietorship setup', 'Immediate PAN generation'] },
+      business: { title: 'Corporate Incorporation', eta: '5-7 Days', price: 'From ₹7,499', reason: ['Pvt Ltd / LLP incorporation', 'Authorized capital validation'] }
     },
     loan: {
-      individual: { title: 'Loan Assistance', eta: '24 Hours', price: 'From ₹499', reason: ['Fast guidance', 'Bank coordination', 'Case review'] },
-      business: { title: 'Loan Assistance', eta: '24 Hours', price: 'From ₹499', reason: ['Fast guidance', 'Bank coordination', 'Case review'] }
+      individual: { title: 'Personal Loan Setup', eta: '24 Hours', price: 'From ₹499', reason: ['Credit score check', 'Bank documents compile'] },
+      business: { title: 'Business Funding Counsel', eta: '48 Hours', price: 'From ₹1,999', reason: ['Startup grant coordination', 'Project DPR prepared'] }
     },
     expert: {
-      individual: { title: 'Talk to Expert', eta: 'Instant Slot', price: 'From ₹499', reason: ['Quick consult', 'Low friction', 'Fast start'] },
-      business: { title: 'Talk to Expert', eta: 'Instant Slot', price: 'From ₹499', reason: ['Quick consult', 'Low friction', 'Fast start'] }
+      individual: { title: 'Tax Consultation Slot', eta: 'Instant Slot', price: 'From ₹499', reason: ['Direct CA callback', 'Secure proxy connect'] },
+      business: { title: 'Corporate CA Advice', eta: 'Instant Slot', price: 'From ₹999', reason: ['Senior corporate tax partner', 'Business advice call'] }
     }
   };
 
@@ -53,17 +171,35 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
   const meta = serviceMeta[answers.serviceType]?.[answers.entityType.toLowerCase()] || serviceMeta.itr.individual;
 
   const toggleDetail = (detail) => {
+    playHaptic();
     setAnswers((prev) => {
       const exists = prev.details.includes(detail);
+      const updatedDetails = exists
+        ? prev.details.filter((item) => item !== detail)
+        : [...prev.details, detail];
+      
+      trackEvent('wizard_step_selected', { field: 'details', value: detail, checked: !exists });
       return {
         ...prev,
-        details: exists ? prev.details.filter((item) => item !== detail) : [...prev.details, detail]
+        details: updatedDetails
       };
     });
   };
 
   const setField = (key, value) => {
-    setAnswers((prev) => ({ ...prev, [key]: value }));
+    playHaptic();
+    setIsRecalculating(true);
+    trackEvent('wizard_step_selected', { field: key, value });
+    
+    setAnswers((prev) => {
+      // Clear details if serviceType switches to prevent mismatched details
+      const details = key === 'serviceType' ? [] : prev.details;
+      return { ...prev, [key]: value, details };
+    });
+
+    setTimeout(() => {
+      setIsRecalculating(false);
+    }, 450);
   };
 
   const summaryItems = [
@@ -184,19 +320,30 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
     }
   };
 
+  const handleContinue = () => {
+    if (isOffline) return;
+    playHaptic();
+    trackEvent('wizard_completed', { service: meta.title, urgency: answers.urgency });
+    onFinishWizard(answers, meta.title);
+  };
+
   return (
     <div className="screen-shell" style={{ gap: 12, paddingBottom: 'calc(240px + env(safe-area-inset-bottom))' }}>
+      {/* Top bar control container */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, width: '100%' }}>
         <button
           type="button"
-          onClick={() => onFinishWizard(null)}
-          aria-label="Go back"
+          onClick={() => {
+            playHaptic();
+            onFinishWizard(null);
+          }}
+          aria-label="Cancel consultation selection and go back"
           style={{
             width: 44,
             height: 44,
             borderRadius: '50%',
             border: '1px solid var(--border-color)',
-            background: '#ffffff',
+            background: 'var(--bg-card)',
             color: 'var(--text-primary)',
             display: 'inline-flex',
             alignItems: 'center',
@@ -205,9 +352,7 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
             flexShrink: 0
           }}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
+          <Icon name="back" size={18} color="var(--text-primary)" />
         </button>
 
         <div style={{ flex: 1, minWidth: 0, paddingLeft: 4 }}>
@@ -215,7 +360,7 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
             Let’s match the right service
           </h2>
           <p style={{ margin: '2px 0 0 0', fontSize: '0.74rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-            Quick match in one screen.
+            Quick matchmaking advisory wizard.
           </p>
         </div>
 
@@ -223,7 +368,7 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
           fontSize: '0.68rem',
           fontWeight: 800,
           color: '#10b981',
-          background: '#ffffff',
+          background: 'var(--bg-card)',
           border: '1.2px solid #10b981',
           borderRadius: 999,
           padding: '5px 12px',
@@ -236,7 +381,52 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
         </span>
       </div>
 
-      <div className="card" style={{ padding: 16, borderColor: 'var(--border-color)', background: '#ffffff', boxShadow: 'var(--shadow-sm)', borderRadius: 18 }}>
+      {/* Connection warning banner */}
+      {isOffline && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: 12,
+          padding: '8px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }} role="alert">
+          <Icon name="info" size={16} color="#ef4444" />
+          <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 600 }}>
+            Offline Mode — Connect to internet to confirm your request.
+          </span>
+        </div>
+      )}
+
+      {/* AI Pick Card container */}
+      <div 
+        className="card" 
+        style={{ 
+          padding: 16, 
+          borderColor: 'var(--border-color)', 
+          background: 'var(--bg-card)', 
+          boxShadow: 'var(--shadow-sm)', 
+          borderRadius: 18,
+          position: 'relative'
+        }}
+      >
+        {isRecalculating && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'rgba(8, 15, 30, 0.65)',
+            backdropFilter: 'blur(3px)',
+            borderRadius: 18,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10
+          }}>
+            <span className="spinner-circle" style={{ width: 22, height: 22 }} />
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{
@@ -246,7 +436,7 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
               fontSize: '0.62rem',
               fontWeight: 900,
               color: '#10b981',
-              backgroundColor: '#e6fcf5',
+              backgroundColor: 'rgba(16, 185, 129, 0.08)',
               borderRadius: 8,
               padding: '4px 8px',
               marginBottom: 10,
@@ -259,14 +449,14 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
               {meta.title}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#10b981', backgroundColor: '#e6fcf5', padding: '4px 8px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.08)', padding: '4px 8px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                 ✓ 95% Match
               </span>
               <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface-variant)', padding: '4px 8px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                 🕒 {meta.eta}
               </span>
               <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface-variant)', padding: '4px 8px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                ₹ {meta.price}
+                {meta.price}
               </span>
             </div>
           </div>
@@ -292,18 +482,16 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
           {meta.reason.map((reason) => (
             <span key={reason} style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-surface-variant)', padding: '4px 8px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-              <span style={{ color: '#10b981', fontWeight: 900 }}>✓</span> {reason.replace('You selected ', '')}
+              <span style={{ color: '#10b981', fontWeight: 900 }}>✓</span> {reason}
             </span>
           ))}
         </div>
       </div>
 
-      <section>
+      {/* Step 1: Services list */}
+      <section aria-labelledby="header-step-1">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <h3 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 900, color: 'var(--text-primary)' }}>1. What service do you need?</h3>
-          <button type="button" aria-label="View all services" style={{ border: 'none', background: 'transparent', color: '#10b981', fontSize: '0.78rem', fontWeight: 800, padding: 0, cursor: 'pointer' }}>
-            View all
-          </button>
+          <h3 id="header-step-1" style={{ margin: 0, fontSize: '0.92rem', fontWeight: 900, color: 'var(--text-primary)' }}>1. What service do you need?</h3>
         </div>
 
         <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 6, scrollbarWidth: 'none' }}>
@@ -320,12 +508,14 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
                   padding: '12px 10px',
                   borderRadius: 14,
                   border: selected ? '1.5px solid #10b981' : '1px solid var(--border-color)',
-                  background: '#ffffff',
+                  background: 'var(--bg-card)',
                   textAlign: 'center',
                   cursor: 'pointer',
                   position: 'relative',
                   flexShrink: 0
                 }}
+                aria-label={`Select service type: ${service.label}`}
+                aria-pressed={selected}
               >
                 {renderServiceIcon(service.id, selected)}
                 <div style={{ fontSize: '0.8rem', fontWeight: 900, color: 'var(--text-primary)', lineHeight: 1.15 }}>{service.label}</div>
@@ -336,14 +526,15 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
         </div>
       </section>
 
-      <section>
-        <h3 style={{ margin: '0 0 8px', fontSize: '0.92rem', fontWeight: 900, color: 'var(--text-primary)' }}>2. Who are you?</h3>
+      {/* Step 2: Entity type selection */}
+      <section aria-labelledby="header-step-2">
+        <h3 id="header-step-2" style={{ margin: '0 0 8px', fontSize: '0.92rem', fontWeight: 900, color: 'var(--text-primary)' }}>2. Who are you?</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
           {[
             { 
               id: 'Individual', 
               title: 'Individual', 
-              desc: 'Salaried, freelancer, professionals',
+              desc: 'Salaried, freelancer, professional',
               icon: (selected) => (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
@@ -354,7 +545,7 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
             { 
               id: 'Business', 
               title: 'Business', 
-              desc: 'Startup, company, LLP, partnership',
+              desc: 'Startup, company, partnership',
               icon: (selected) => (
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
@@ -377,11 +568,13 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
                   padding: '14px 12px',
                   borderRadius: 14,
                   border: selected ? '1.5px solid #10b981' : '1px solid var(--border-color)',
-                  background: '#ffffff',
+                  background: 'var(--bg-card)',
                   textAlign: 'left',
                   cursor: 'pointer',
                   minHeight: 88
                 }}
+                aria-label={`Select profile type: ${item.title}`}
+                aria-pressed={selected}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
                   <div style={{ minWidth: 0, flex: 1 }}>
@@ -411,14 +604,15 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
         </div>
       </section>
 
-      <section>
-        <h3 style={{ margin: '0 0 8px', fontSize: '0.92rem', fontWeight: 900, color: 'var(--text-primary)' }}>3. When do you need it?</h3>
+      {/* Step 3: Urgency selection */}
+      <section aria-labelledby="header-step-3">
+        <h3 id="header-step-3" style={{ margin: '0 0 8px', fontSize: '0.92rem', fontWeight: 900, color: 'var(--text-primary)' }}>3. When do you need it?</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
           {[
             { 
               id: 'Urgent', 
               title: 'Urgent', 
-              desc: 'Within 24-48 hrs', 
+              desc: 'Within 48 hours', 
               icon: (selected) => (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
@@ -441,7 +635,7 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
             { 
               id: 'No Rush', 
               title: 'No Rush', 
-              desc: 'Whenever possible', 
+              desc: 'Flexible', 
               icon: (selected) => (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="10" />
@@ -461,11 +655,13 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
                   padding: '12px 10px',
                   borderRadius: 14,
                   border: selected ? '1.5px solid #10b981' : '1px solid var(--border-color)',
-                  background: '#ffffff',
+                  background: 'var(--bg-card)',
                   textAlign: 'left',
                   cursor: 'pointer',
                   minHeight: 88
                 }}
+                aria-label={`Select urgency speed: ${item.title}`}
+                aria-pressed={selected}
               >
                 <div style={{
                   color: selected ? '#10b981' : '#64748b',
@@ -489,57 +685,66 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
         </div>
       </section>
 
-      <section>
-        <h3 style={{ margin: '0 0 8px', fontSize: '0.92rem', fontWeight: 900, color: 'var(--text-primary)' }}>
-          4. Additional details <span style={{ color: '#10b981', fontWeight: 500 }}>(optional)</span>
-        </h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {detailOptions.map((detail) => {
-            const selected = answers.details.includes(detail);
-            return (
-              <button
-                key={detail}
-                type="button"
-                onClick={() => toggleDetail(detail)}
-                className="card"
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 999,
-                  border: selected ? '1.5px solid #10b981' : '1px solid var(--border-color)',
-                  background: '#ffffff',
-                  fontSize: '0.72rem',
-                  fontWeight: 800,
-                  color: 'var(--text-primary)',
-                  cursor: 'pointer',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4
-                }}
-              >
-                {selected && <span style={{ color: '#10b981', fontWeight: 900 }}>✓</span>}
-                {detail}
-              </button>
-            );
-          })}
-        </div>
-      </section>
+      {/* Step 4: Additional checkboxes */}
+      {detailOptions.length > 0 && (
+        <section aria-labelledby="header-step-4">
+          <h3 id="header-step-4" style={{ margin: '0 0 8px', fontSize: '0.92rem', fontWeight: 900, color: 'var(--text-primary)' }}>
+            4. Additional details <span style={{ color: '#10b981', fontWeight: 500 }}>(optional)</span>
+          </h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {detailOptions.map((detail) => {
+              const selected = answers.details.includes(detail);
+              return (
+                <button
+                  key={detail}
+                  type="button"
+                  onClick={() => toggleDetail(detail)}
+                  className="card"
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: 999,
+                    border: selected ? '1.5px solid #10b981' : '1px solid var(--border-color)',
+                    background: 'var(--bg-card)',
+                    fontSize: '0.72rem',
+                    fontWeight: 800,
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    minHeight: 40
+                  }}
+                  role="checkbox"
+                  aria-checked={selected}
+                  aria-label={`Include: ${detail}`}
+                >
+                  {selected && <span style={{ color: '#10b981', fontWeight: 900 }}>✓</span>}
+                  {detail}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
-      <div className="card" style={{ padding: 14, background: '#f8fafc', borderColor: 'var(--border-color)', borderRadius: 14 }}>
+      {/* Summary selections wrapper */}
+      <div className="card" style={{ padding: 14, background: 'var(--bg-surface-variant)', borderColor: 'var(--border-color)', borderRadius: 14 }}>
         <div style={{ fontSize: '0.62rem', fontWeight: 900, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
           YOUR SELECTION
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           {summaryItems.map((item) => (
-            <span key={item.label} style={{ fontSize: '0.7rem', fontWeight: 800, color: '#10b981', backgroundColor: '#e6fcf5', padding: '6px 12px', borderRadius: 999 }}>
+            <span key={item.label} style={{ fontSize: '0.7rem', fontWeight: 800, color: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.08)', padding: '6px 12px', borderRadius: 999 }}>
               {item.value}
             </span>
           ))}
         </div>
       </div>
 
+      {/* Bottom Continue bar */}
       <button
         type="button"
-        onClick={() => onFinishWizard(answers, meta.title)}
+        onClick={handleContinue}
         className="btn btn-primary"
         style={{
           width: 'calc(100% - 32px)',
@@ -556,17 +761,21 @@ export default function Wizard({ initialServiceId, onFinishWizard }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: 'var(--primary)',
+          backgroundColor: isOffline ? 'var(--text-tertiary)' : 'var(--primary)',
           color: '#ffffff',
           border: 'none',
-          cursor: 'pointer'
+          cursor: isOffline ? 'not-allowed' : 'pointer'
         }}
+        disabled={isOffline}
+        aria-label="Confirm selection and continue to booking slot page"
       >
-        Continue to Choose Expert & Time
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', right: 20 }}>
-          <line x1="5" y1="12" x2="19" y2="12" />
-          <polyline points="12 5 19 12 12 19" />
-        </svg>
+        {isOffline ? 'Offline — Reconnect to Continue' : 'Continue to Choose Expert & Time'}
+        {!isOffline && (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', right: 20 }}>
+            <line x1="5" y1="12" x2="19" y2="12" />
+            <polyline points="12 5 19 12 12 19" />
+          </svg>
+        )}
       </button>
     </div>
   );

@@ -1,35 +1,76 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
 
-export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTrigger, addNotification }) {
-  const isGuest = userProfile?.isGuest;
+export default function Profile({ 
+  userProfile, 
+  onMenuClick, 
+  onLogout, 
+  onLoginTrigger, 
+  addNotification,
+  theme,
+  setTheme 
+}) {
+  const isGuest = userProfile?.isGuest || userProfile?.name === 'Guest';
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  // Safe Capacitor Haptic trigger
+  const playHaptic = async (style = ImpactStyle.Light) => {
+    try {
+      await Haptics.impact({ style });
+    } catch (e) {
+      if (navigator.vibrate) navigator.vibrate(30);
+    }
+  };
+
+  // Analytics event tracker
+  const trackEvent = (eventName, payload = {}) => {
+    console.log(`[Analytics] Event: ${eventName}`, payload);
+    if (window.gtag) {
+      window.gtag('event', eventName, payload);
+    }
+  };
 
   useEffect(() => {
-    const appContent = document.querySelector('.app-content');
-    const screenShell = document.querySelector('.screen-shell');
-    console.log('--- PROFILE LAYOUT DEBUG ---');
-    console.log('window.innerHeight:', window.innerHeight);
-    console.log('document.body.scrollHeight:', document.body.scrollHeight);
-    if (appContent) {
-      console.log('appContent.scrollHeight:', appContent.scrollHeight);
-      console.log('appContent.clientHeight:', appContent.clientHeight);
+    trackEvent('profile_screen_viewed', { is_guest: isGuest });
+
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [isGuest]);
+
+  const handleItemClick = (item) => {
+    playHaptic();
+    trackEvent('profile_menu_clicked', { target: item.id });
+
+    if (isGuest && item.id !== 'privacy') {
+      addNotification('Login required to access this feature.', 'error');
+      onLoginTrigger();
+    } else {
+      onMenuClick(item.id, item.label);
     }
-    if (screenShell) {
-      console.log('screenShell.height:', screenShell.getBoundingClientRect().height);
-      console.log('screenShell computed padding-bottom:', window.getComputedStyle(screenShell).paddingBottom);
-      console.log('screenShell computed height:', window.getComputedStyle(screenShell).height);
-      const childrenInfo = Array.from(screenShell.children).map((c, i) => {
-        return `${i}: <${c.tagName.toLowerCase()}> class="${c.className}" height=${c.getBoundingClientRect().height}`;
-      });
-      console.log('screenShell children:\n' + childrenInfo.join('\n'));
-    }
-  }, []);
+  };
+
+  const handleThemeChange = (newTheme) => {
+    if (newTheme === theme) return;
+    playHaptic(ImpactStyle.Medium);
+    setTheme(newTheme);
+    trackEvent('profile_theme_changed', { theme: newTheme });
+    addNotification(`Theme switched to ${newTheme} mode!`, 'success');
+  };
 
   const menuItems = [
     { 
       id: 'requests', 
       label: 'Cases', 
       desc: 'View your cases', 
-      iconBg: '#FFF2E6', 
+      iconBg: 'rgba(249, 115, 22, 0.08)', 
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2.5">
           <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
@@ -42,7 +83,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
       id: 'payments', 
       label: 'Billing', 
       desc: 'Payments & invoices', 
-      iconBg: '#FEF9C3', 
+      iconBg: 'rgba(234, 179, 8, 0.08)', 
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EAB308" strokeWidth="2.5">
           <rect x="2" y="5" width="20" height="14" rx="2" ry="2"/>
@@ -54,7 +95,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
       id: 'invoices', 
       label: 'Invoices', 
       desc: 'View all invoices', 
-      iconBg: '#EFF6FF', 
+      iconBg: 'rgba(37, 99, 235, 0.08)', 
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="2.5">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -68,7 +109,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
       id: 'saved-docs', 
       label: 'Files', 
       desc: 'Manage your files', 
-      iconBg: '#E6F4EA', 
+      iconBg: 'rgba(16, 185, 129, 0.08)', 
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -79,7 +120,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
       id: 'tickets', 
       label: 'Support', 
       desc: 'Help & support center', 
-      iconBg: '#FEE2E2', 
+      iconBg: 'rgba(239, 68, 68, 0.08)', 
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -90,7 +131,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
       id: 'privacy', 
       label: 'Privacy', 
       desc: 'Privacy & security settings', 
-      iconBg: '#F3E8FF', 
+      iconBg: 'rgba(139, 92, 246, 0.08)', 
       icon: (
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2.5">
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -105,19 +146,42 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
       className="screen-shell animate-fade-in-up"
       style={{
         gap: '16px',
-        paddingTop: '20px',
-        backgroundColor: '#FFFFFF',
+        paddingTop: '16px',
+        backgroundColor: 'var(--bg-card)',
         position: 'relative',
         flexShrink: 0
       }}
     >
+      {/* Network Alert Banner */}
+      {isOffline && (
+        <div 
+          style={{
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.2)',
+            borderRadius: '12px',
+            padding: '8px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}
+          role="alert"
+        >
+          <span style={{ fontSize: '1rem' }}>⚠️</span>
+          <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 700 }}>
+            Offline Mode — Profile settings edits will sync when online.
+          </span>
+        </div>
+      )}
+
       {/* Top Header Row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', paddingInline: '4px' }}>
         <div>
-          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#2563EB', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
             ACCOUNT
           </span>
-          <h3 className="title-accent" style={{ fontSize: '1.45rem', fontWeight: 800, color: 'var(--text-primary)', margin: '2px 0 0 0' }}>
+          <h3 className="title-accent" style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--text-primary)', margin: '2px 0 0 0' }}>
             Profile
           </h3>
         </div>
@@ -125,16 +189,16 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
         {/* Secure Badge */}
         <div 
           style={{
-            backgroundColor: '#EFF6FF',
+            backgroundColor: 'rgba(59, 130, 246, 0.08)',
             padding: '8px 14px',
             borderRadius: '12px',
-            fontSize: '0.72rem',
+            fontSize: '0.7rem',
             fontWeight: 800,
-            color: '#2563EB',
+            color: '#3b82f6',
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            boxShadow: 'var(--shadow-sm)'
+            border: '1px solid rgba(59, 130, 246, 0.15)'
           }}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
@@ -159,7 +223,8 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
             alignItems: 'center',
             gap: '16px',
             boxShadow: 'var(--shadow-lg)',
-            width: '100%'
+            width: '100%',
+            boxSizing: 'border-box'
           }}
         >
           {/* Centered rings + padlock icon */}
@@ -182,7 +247,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
           </div>
 
           <div style={{ textAlign: 'center' }}>
-            <h4 className="title-accent" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+            <h4 className="title-accent" style={{ fontSize: '1.15rem', fontWeight: 900, color: '#ffffff', margin: 0 }}>
               Secure account
             </h4>
             <p style={{ fontSize: '0.8rem', color: '#94A3B8', marginTop: '4px', margin: 0 }}>
@@ -192,13 +257,16 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
 
           {/* Action button with inline chevron arrow */}
           <button 
-            onClick={onLoginTrigger}
+            onClick={() => {
+              playHaptic();
+              onLoginTrigger();
+            }}
             className="btn btn-primary"
             style={{
               backgroundColor: '#2563EB',
               color: '#ffffff',
               fontWeight: 800,
-              fontSize: '0.88rem',
+              fontSize: '0.86rem',
               borderRadius: '16px',
               padding: '14px 20px',
               width: '100%',
@@ -207,8 +275,10 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
               alignItems: 'center',
               justifyContent: 'center',
               position: 'relative',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              minHeight: 48
             }}
+            aria-label="Sign in or create account"
           >
             <span style={{ flex: 1, textAlign: 'center', marginLeft: '24px' }}>Sign in or create account</span>
             <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -233,11 +303,12 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
             borderRadius: '24px',
             border: '1.5px solid rgba(56, 189, 248, 0.15)',
             boxShadow: 'var(--shadow-lg)',
-            width: '100%'
+            width: '100%',
+            boxSizing: 'border-box'
           }}
         >
           <img 
-            src={userProfile.photo} 
+            src={userProfile.photo || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'} 
             alt={userProfile.name} 
             style={{
               width: '72px',
@@ -250,7 +321,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
           />
           
           <div>
-            <h4 className="title-accent" style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', margin: 0 }}>
+            <h4 className="title-accent" style={{ fontSize: '1.2rem', fontWeight: 900, color: '#ffffff', margin: 0 }}>
               {userProfile.name}
             </h4>
             <span style={{ fontSize: '0.8rem', color: '#94A3B8', display: 'block', marginTop: '2px' }}>
@@ -274,7 +345,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
               <span style={{ color: '#38BDF8', display: 'block', fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 PAN Number
               </span>
-              <span style={{ fontWeight: 800, color: '#ffffff', marginTop: '2px', display: 'block', fontSize: '0.82rem' }}>
+              <span style={{ fontWeight: 800, color: '#ffffff', marginTop: '2px', display: 'block', fontSize: '0.8rem' }}>
                 {userProfile.pan || 'NOT SUPPLIED'}
               </span>
             </div>
@@ -282,7 +353,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
               <span style={{ color: '#38BDF8', display: 'block', fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 GSTIN
               </span>
-              <span style={{ fontWeight: 800, color: '#ffffff', marginTop: '2px', display: 'block', fontSize: '0.82rem' }}>
+              <span style={{ fontWeight: 800, color: '#ffffff', marginTop: '2px', display: 'block', fontSize: '0.8rem' }}>
                 {userProfile.gst || 'NOT SUPPLIED'}
               </span>
             </div>
@@ -309,9 +380,9 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
           </div>
-          <span style={{ fontSize: '0.62rem', color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.2 }}>
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-primary)', fontWeight: 800, lineHeight: 1.25 }}>
             <strong>256-bit</strong><br />
-            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>SSL Encryption</span>
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>SSL Secure</span>
           </span>
         </div>
 
@@ -323,7 +394,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
               <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
             </svg>
           </div>
-          <span style={{ fontSize: '0.62rem', color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.2 }}>
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-primary)', fontWeight: 800, lineHeight: 1.25 }}>
             <strong>Data</strong><br />
             <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Protected</span>
           </span>
@@ -336,9 +407,9 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
           </div>
-          <span style={{ fontSize: '0.62rem', color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.2 }}>
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-primary)', fontWeight: 800, lineHeight: 1.25 }}>
             <strong>Privacy</strong><br />
-            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Guaranteed</span>
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Assured</span>
           </span>
         </div>
 
@@ -352,10 +423,70 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
               <path d="M6 5h.01M6 12h.01M6 19h.01"/>
             </svg>
           </div>
-          <span style={{ fontSize: '0.62rem', color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.2 }}>
-            <strong>Secure</strong><br />
-            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Servers</span>
+          <span style={{ fontSize: '0.6rem', color: 'var(--text-primary)', fontWeight: 800, lineHeight: 1.25 }}>
+            <strong>Govt</strong><br />
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Compliant</span>
           </span>
+        </div>
+      </div>
+
+      {/* Theme Switcher Setting Panel */}
+      <div 
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '12px 16px',
+          borderRadius: '16px',
+          border: '1.5px solid var(--border-color)',
+          backgroundColor: 'var(--bg-surface)'
+        }}
+      >
+        <div>
+          <h5 style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+            Appearance Theme
+          </h5>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
+            Choose light or dark mode
+          </span>
+        </div>
+        <div style={{ display: 'flex', backgroundColor: 'var(--border-color)', borderRadius: '10px', padding: '2px' }}>
+          <button 
+            type="button"
+            onClick={() => handleThemeChange('light')}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '0.7rem',
+              fontWeight: 800,
+              backgroundColor: theme === 'light' ? 'var(--bg-card)' : 'transparent',
+              color: theme === 'light' ? 'var(--text-primary)' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              minHeight: 32
+            }}
+            aria-label="Switch to Light Theme"
+          >
+            Light
+          </button>
+          <button 
+            type="button"
+            onClick={() => handleThemeChange('dark')}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '0.7rem',
+              fontWeight: 800,
+              backgroundColor: theme === 'dark' ? 'var(--bg-card)' : 'transparent',
+              color: theme === 'dark' ? 'var(--text-primary)' : 'var(--text-secondary)',
+              cursor: 'pointer',
+              minHeight: 32
+            }}
+            aria-label="Switch to Dark Theme"
+          >
+            Dark
+          </button>
         </div>
       </div>
 
@@ -364,47 +495,28 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
         {menuItems.map((item) => (
           <div 
             key={item.id}
-            onClick={() => {
-              if (isGuest && item.id !== 'privacy') {
-                addNotification('Login required to access this feature.', 'error');
-                onLoginTrigger();
-              } else {
-                onMenuClick(item.id, item.label);
-              }
-            }}
+            onClick={() => handleItemClick(item)}
             className="card"
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                if (isGuest && item.id !== 'privacy') {
-                  addNotification('Login required to access this feature.', 'error');
-                  onLoginTrigger();
-                } else {
-                  onMenuClick(item.id, item.label);
-                }
+                handleItemClick(item);
               }
             }}
             style={{
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              padding: '14px 16px',
+              padding: '16px',
               cursor: 'pointer',
               borderRadius: '16px',
-              border: '1.5px solid rgba(226, 232, 240, 0.8)',
-              backgroundColor: '#FFFFFF',
+              border: '1.5px solid var(--border-color)',
+              backgroundColor: 'var(--bg-card)',
               boxShadow: '0 2px 8px rgba(10, 37, 64, 0.02)',
-              transition: 'all var(--transition-fast)'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'var(--bg-surface-variant)';
-              e.currentTarget.style.transform = 'translateX(4px)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = '#FFFFFF';
-              e.currentTarget.style.transform = 'none';
+              minHeight: 56,
+              boxSizing: 'border-box'
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -426,7 +538,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
 
               {/* Title and Description */}
               <div>
-                <h5 style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
+                <h5 style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0 }}>
                   {item.label}
                 </h5>
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', display: 'block', marginTop: '2px' }}>
@@ -446,32 +558,33 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
       {/* Connection encryption status strip */}
       <div 
         style={{
-          backgroundColor: '#F0F9FF',
-          border: '1.5px solid #E0F2FE',
+          backgroundColor: 'rgba(59, 130, 246, 0.08)',
+          border: '1.5px solid rgba(59, 130, 246, 0.15)',
           borderRadius: '16px',
           padding: '12px 16px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           width: '100%',
-          gap: '8px'
+          gap: '8px',
+          boxSizing: 'border-box'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563EB" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
             <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
           </svg>
-          <span style={{ fontSize: '0.7rem', color: '#0369A1', lineHeight: 1.3 }}>
-            Your connection is secured using <strong>256-bit SSL</strong> encryption.
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-primary)', lineHeight: 1.3 }}>
+            Connection is secured using <strong>256-bit SSL</strong>.
           </span>
         </div>
 
         {/* Secure badge */}
         <div 
           style={{
-            backgroundColor: '#DCFCE7',
-            color: '#15803D',
+            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+            color: '#10b981',
             padding: '4px 8px',
             borderRadius: '8px',
             fontSize: '0.64rem',
@@ -480,7 +593,7 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
             display: 'flex',
             alignItems: 'center',
             gap: '4px',
-            border: '1px solid rgba(21, 128, 61, 0.2)'
+            border: '1px solid rgba(16, 185, 129, 0.2)'
           }}
         >
           <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
@@ -493,7 +606,11 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
       {/* Logout button for authenticated users */}
       {!isGuest && (
         <button 
-          onClick={onLogout}
+          onClick={() => {
+            playHaptic(ImpactStyle.Heavy);
+            trackEvent('profile_logout_clicked');
+            onLogout();
+          }}
           className="btn btn-secondary"
           style={{ 
             borderColor: 'var(--error)', 
@@ -505,10 +622,10 @@ export default function Profile({ userProfile, onMenuClick, onLogout, onLoginTri
             gap: '8px',
             backgroundColor: 'rgba(239, 68, 68, 0.02)',
             width: '100%',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            minHeight: 48
           }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.08)'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.02)'}
+          aria-label="Log out of application"
         >
           🚪 Log out
         </button>

@@ -113,6 +113,15 @@ export const updateRequestStatus = async (req: AuthenticatedRequest, res: Respon
     
     // Broadcast via socket.io
     broadcastRequestUpdate(id, request);
+
+    // Audit log for expert action
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user!.id,
+        action: 'EXPERT_UPDATE_REQUEST_STATUS',
+        details: `Updated request ${id} status to ${status} with progress ${progressPercent}%`
+      }
+    });
     
     return res.status(200).json({ success: true, data: request });
   } catch (error) {
@@ -127,6 +136,16 @@ export const assignExpert = async (req: AuthenticatedRequest, res: Response) => 
       where: { id },
       data: { assignedExpertId: req.user!.id, status: 'EXPERT_ASSIGNED' }
     });
+
+    // Audit log for expert assignment
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user!.id,
+        action: 'EXPERT_ASSIGNED',
+        details: `Expert registered themselves for request case ${id}`
+      }
+    });
+
     return res.status(200).json({ success: true, data: request });
   } catch (error) {
     return res.status(500).json({ error: 'Failed to assign' });

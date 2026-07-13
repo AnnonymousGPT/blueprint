@@ -14,8 +14,11 @@
     "@capacitor/app": "^8.1.0",
     "@capacitor/browser": "^8.0.3",
     "@capacitor/core": "^8.4.0",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/splash-screen": "^8.0.1",
+    "@sentry/react": "^10.65.0",
     "@supabase/supabase-js": "^2.110.2",
+    "axios": "^1.18.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },

@@ -1,4 +1,5 @@
-# Exported from Render on 2026-07-11T02:51:33Z
+# Render Deployment Configuration — Blueprint Advisor
+# Updated: 2026-07-13 — Production Deployment Execution
 version: "1"
 services:
 - type: web
@@ -7,38 +8,48 @@ services:
   repo: https://github.com/AnnonymousGPT/blueprint
   plan: free
   envVars:
-  - key: GOOGLE_CLIENT_SECRET
-    sync: false
-  - key: GOOGLE_CLIENT_ID
-    sync: false
-  - key: RAZORPAY_KEY_SECRET
-    sync: false
-  - key: RAZORPAY_KEY_ID
-    sync: false
-  - key: SUPABASE_SERVICE_ROLE_KEY
-    sync: false
-  - key: SUPABASE_ANON_KEY
-    sync: false
-  - key: SUPABASE_URL
-    sync: false
-  - key: JWT_REFRESH_SECRET
-    sync: false
-  - key: JWT_ACCESS_SECRET
-    sync: false
-  - key: DATABASE_URL
-    sync: false
+  - key: NODE_ENV
+    value: production
+  - key: PORT
+    value: 10000
   - key: AWS_REGION
     value: ap-south-1
   - key: S3_BUCKET_NAME
     value: blueprint-advisor-documents
-  - key: PORT
-    value: 10000
-  - key: NODE_ENV
-    value: production
+  # Secrets — set manually in Render Dashboard (sync: false = not committed to repo)
+  - key: DATABASE_URL
+    sync: false
+  - key: JWT_ACCESS_SECRET
+    sync: false
+  - key: JWT_REFRESH_SECRET
+    sync: false
+  - key: SUPABASE_URL
+    sync: false
+  - key: SUPABASE_ANON_KEY
+    sync: false
+  - key: SUPABASE_SERVICE_ROLE_KEY
+    sync: false
+  - key: RAZORPAY_KEY_ID
+    sync: false
+  - key: RAZORPAY_KEY_SECRET
+    sync: false
+  - key: GOOGLE_CLIENT_ID
+    sync: false
+  - key: GOOGLE_CLIENT_SECRET
+    sync: false
   - key: FCM_SERVER_KEY
     sync: false
+  # CORS — production frontend origins
+  - key: FRONTEND_URL
+    value: https://blueprintadvisor.in
+  - key: EXPERT_URL
+    value: https://blueprintadvisor.in/expert
+  - key: ALLOWED_ORIGINS
+    value: https://blueprintadvisor.in,https://www.blueprintadvisor.in,capacitor://localhost
   region: oregon
-  buildCommand: npm install --include=dev && npm run prisma:generate && npm run build
+  # Build: generate Prisma client → compile TS → deploy pending migrations
+  buildCommand: npm install --include=dev && npm run prisma:generate && npm run build && npx prisma migrate deploy
   startCommand: npm start
   autoDeployTrigger: commit
   rootDir: backend
+  healthCheckPath: /health

@@ -5,7 +5,7 @@ async function main() {
   const requests = await prisma.serviceRequest.findMany({
     include: {
       assignedExpert: true,
-      client: true,
+      user: true,
       bookings: true
     }
   });

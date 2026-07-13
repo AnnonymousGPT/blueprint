@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { standardLimiter, otpSendLimiter, authVerifyLimiter } from '../middleware/rateLimiter';
 import * as authCtrl from '../controllers/authController';
 import * as requestCtrl from '../controllers/requestController';
 import * as bookingCtrl from '../controllers/bookingController';
@@ -9,12 +10,19 @@ import * as notificationCtrl from '../controllers/notificationController';
 
 const router = Router();
 
-// Auth
-router.post('/auth/send-otp', authCtrl.sendOtp);
-router.post('/auth/verify-otp', authCtrl.verifyOtp);
-router.post('/auth/register', authCtrl.register);
+// Auth (with specific rate limiters applied)
+router.post('/auth/send-otp', otpSendLimiter, authCtrl.sendOtp);
+router.post('/auth/verify-otp', authVerifyLimiter, authCtrl.verifyOtp);
+router.post('/auth/register', authVerifyLimiter, authCtrl.register);
+router.post('/auth/refresh-token', authCtrl.refreshToken);
+router.post('/auth/logout', authenticateToken, authCtrl.logout);
 router.get('/auth/me', authenticateToken, authCtrl.getMe);
-router.get('/experts', authCtrl.getExperts);
+router.patch('/auth/profile', authenticateToken, authCtrl.updateProfile);
+router.delete('/auth/account', authenticateToken, authCtrl.deleteAccount);
+router.get('/experts', standardLimiter, authCtrl.getExperts);
+
+// Mount standard rate limiter to all subsequent data resource routes
+router.use(standardLimiter);
 
 // Requests
 router.post('/requests', authenticateToken, requireRole(['CLIENT']), requestCtrl.createRequest);
@@ -42,6 +50,5 @@ router.post('/messages', authenticateToken, requireRole(['CLIENT', 'EXPERT']), m
 router.get('/notifications', authenticateToken, requireRole(['CLIENT', 'EXPERT', 'ADMIN']), notificationCtrl.getNotifications);
 router.post('/notifications/read-all', authenticateToken, requireRole(['CLIENT', 'EXPERT', 'ADMIN']), notificationCtrl.markAllRead);
 router.patch('/notifications/:id/read', authenticateToken, requireRole(['CLIENT', 'EXPERT', 'ADMIN']), notificationCtrl.markRead);
-
 
 export default router;
