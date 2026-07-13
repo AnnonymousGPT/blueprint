@@ -48,7 +48,7 @@ services:
     value: https://blueprintadvisor.in,https://www.blueprintadvisor.in,capacitor://localhost
   region: oregon
   # Build: generate Prisma client → compile TS → deploy pending migrations
-  buildCommand: npm install --include=dev && npm run prisma:generate && npm run build && npx prisma migrate deploy
+  buildCommand: npm install --include=dev && npm run prisma:generate && npm run build
   startCommand: npm start
   autoDeployTrigger: commit
   rootDir: backend
