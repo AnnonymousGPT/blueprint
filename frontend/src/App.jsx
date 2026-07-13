@@ -729,6 +729,7 @@ export default function App() {
             onSelectCase={setSelectedExpertRequest}
             onViewCalendar={() => setExpertActiveTab('calendar')}
             onOpenProfile={() => setExpertActiveTab('profile')}
+            setExpertActiveTab={setExpertActiveTab}
           />
         );
       case 'cases':
