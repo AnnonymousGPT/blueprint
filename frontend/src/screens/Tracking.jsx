@@ -96,6 +96,32 @@ function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2.2 }) {
           <line x1="10" y1="9" x2="8" y2="9" />
         </svg>
       );
+    case 'shield':
+      return (
+        <svg {...common}>
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        </svg>
+      );
+    case 'pencil':
+      return (
+        <svg {...common}>
+          <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+        </svg>
+      );
+    case 'paperplane':
+      return (
+        <svg {...common}>
+          <line x1="22" y1="2" x2="11" y2="13" />
+          <polygon points="22 2 15 22 11 13 2 9 22 2" />
+        </svg>
+      );
+    case 'user':
+      return (
+        <svg {...common}>
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+      );
     case 'chevronRight':
       return (
         <svg {...common}>
@@ -112,6 +138,34 @@ function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2.2 }) {
       return (
         <svg {...common}>
           <polyline points="18 15 12 9 6 15" />
+        </svg>
+      );
+    case 'star':
+      return (
+        <svg {...common} fill="currentColor" stroke="none">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+        </svg>
+      );
+    case 'bell':
+      return (
+        <svg {...common}>
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+          <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+        </svg>
+      );
+    case 'dots':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="1" />
+          <circle cx="19" cy="12" r="1" />
+          <circle cx="5" cy="12" r="1" />
+        </svg>
+      );
+    case 'copy':
+      return (
+        <svg {...common}>
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
         </svg>
       );
     default:
@@ -134,7 +188,8 @@ export default function Tracking({ requests = [], documents = [], selectedReques
 
   // V4 Subview Routing
   const [activeSubView, setActiveSubView] = useState('workspace'); // 'workspace' | 'timeline' | 'documents' | 'invoices' | 'consultations'
-  const [consultationExpanded, setConsultationExpanded] = useState(false);
+  const [consultationExpanded, setConsultationExpanded] = useState(true); // Default open consultation as per screenshot
+  const [documentsExpanded, setDocumentsExpanded] = useState(true); // Default open documents summary as per screenshot
 
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [rescheduleData, setRescheduleData] = useState({ date: '', time: '' });
@@ -147,7 +202,6 @@ export default function Tracking({ requests = [], documents = [], selectedReques
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Faster skeleton shimmer to match V3/V4 speed
     const timer = setTimeout(() => setLoading(false), 400);
 
     return () => {
@@ -162,14 +216,12 @@ export default function Tracking({ requests = [], documents = [], selectedReques
     return requests.find((request) => request.id === resolvedRequestId) || requests[0];
   }, [requests, resolvedRequestId]);
 
-  // Persist selected Request ID to preserve workspace across refreshes
   useEffect(() => {
     if (activeRequest?.id) {
       localStorage.setItem('active_workspace_request_id', activeRequest.id);
     }
   }, [activeRequest]);
 
-  // Capacitor haptics
   const playHaptic = async (type = 'light') => {
     try {
       await Haptics.impact({ style: type === 'medium' ? ImpactStyle.Medium : ImpactStyle.Light });
@@ -237,12 +289,10 @@ export default function Tracking({ requests = [], documents = [], selectedReques
     });
   }, [activeRequest]);
 
-  // Compute blockers
   const blockers = useMemo(() => {
     return documentChecklist.filter(item => item.status === 'Rejected');
   }, [documentChecklist]);
 
-  // Document Counts
   const docCounts = useMemo(() => {
     const total = documentChecklist.length;
     const uploaded = documentChecklist.filter(d => d.uploaded).length;
@@ -250,43 +300,12 @@ export default function Tracking({ requests = [], documents = [], selectedReques
     return { total, uploaded, pending };
   }, [documentChecklist]);
 
-  // Timeline Config
-  const timelineSteps = useMemo(() => {
-    if (!activeRequest) return [];
-    
-    const steps = [
-      { key: 'NEW', title: 'Request Submitted', desc: 'Case received by Blueprint' },
-      { key: 'EXPERT_ASSIGNED', title: 'Expert Assigned', desc: 'CA partner is assigned to review' },
-      { key: 'DOCUMENTS_PENDING', title: 'Documents Verification', desc: 'Verification checklist completion' },
-      { key: 'IN_PROGRESS', title: 'Filing In Progress', desc: 'Advisor is draft compiling' },
-      { key: 'REVIEW', title: 'Draft Review', desc: 'Awaiting client approval signature' },
-      { key: 'COMPLETED', title: 'Case Completed', desc: 'Successfully filed and closed' }
-    ];
-
-    const currentIdx = steps.findIndex(s => s.key === activeRequest.status);
-
-    return steps.map((s, idx) => {
-      let stepStatus = 'pending';
-      if (activeRequest.status === 'COMPLETED') {
-        stepStatus = 'completed';
-      } else if (idx < currentIdx) {
-        stepStatus = 'completed';
-      } else if (idx === currentIdx) {
-        stepStatus = 'active';
-      }
-
-      return { ...s, status: stepStatus };
-    });
-  }, [activeRequest]);
-
-  // Check active upcoming calls/bookings
   const activeBookings = useMemo(() => {
     return (activeRequest?.bookings || []).filter(
       (b) => b.status !== 'CANCELLED' && b.status !== 'COMPLETED'
     );
   }, [activeRequest]);
 
-  // Past Bookings for Consultation History
   const pastBookings = useMemo(() => {
     return (activeRequest?.bookings || []).filter(
       (b) => b.status === 'COMPLETED' || b.status === 'CANCELLED'
@@ -383,10 +402,18 @@ export default function Tracking({ requests = [], documents = [], selectedReques
 
         <div className="card animate-scale-in" style={{ padding: 16, borderRadius: 20, border: '1px solid var(--border-color)', width: '100%', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            {timelineSteps.map((step, idx) => {
-              const isLast = idx === timelineSteps.length - 1;
-              const isCompleted = step.status === 'completed';
-              const isActive = step.status === 'active';
+            {[
+              { key: 'NEW', title: 'Request Submitted', desc: 'Case received by Blueprint' },
+              { key: 'EXPERT_ASSIGNED', title: 'Expert Assigned', desc: 'CA partner is assigned to review' },
+              { key: 'DOCUMENTS_PENDING', title: 'Documents Verification', desc: 'Verification checklist completion' },
+              { key: 'IN_PROGRESS', title: 'Filing In Progress', desc: 'Advisor is draft compiling' },
+              { key: 'REVIEW', title: 'Draft Review', desc: 'Awaiting client approval signature' },
+              { key: 'COMPLETED', title: 'Case Completed', desc: 'Successfully filed and closed' }
+            ].map((step, idx, steps) => {
+              const currentIdx = steps.findIndex(s => s.key === activeRequest.status);
+              const isLast = idx === steps.length - 1;
+              const isCompleted = activeRequest.status === 'COMPLETED' || idx < currentIdx;
+              const isActive = idx === currentIdx;
 
               return (
                 <div key={step.key} style={{ display: 'flex', gap: 12, position: 'relative' }}>
@@ -675,88 +702,26 @@ export default function Tracking({ requests = [], documents = [], selectedReques
     );
   }
 
-  // State machine priority builder for Section 1
-  const getRequiredAction = () => {
-    // 1. Documents Rejected/Blocker (Highest priority)
-    if (blockers.length > 0) {
-      const firstBlocker = blockers[0];
-      return {
-        title: `Upload Rejected ${firstBlocker.label}`,
-        desc: `Reason: ${firstBlocker.rejectionReason || 'Incorrect document format.'}`,
-        ctaText: 'Upload Now',
-        icon: 'alert',
-        bg: 'linear-gradient(135deg, #7f1d1d 0%, #450a0a 100%)',
-        accentColor: '#fca5a5',
-        action: () => {
-          setActiveSubView('documents');
-        }
-      };
+  // Required Action mapping
+  const action = {
+    title: blockers.length > 0 
+      ? `Upload Rejected ${blockers[0].label}` 
+      : activeRequest.status === 'REVIEW' 
+        ? 'Review Draft Return' 
+        : 'Upload Form 16 / Salary Slips',
+    desc: blockers.length > 0 
+      ? `Reason: ${blockers[0].rejectionReason || 'Incorrect document format.'}`
+      : activeRequest.status === 'REVIEW'
+        ? 'Please verify the final tax calculation sheet and approve the return.'
+        : 'These documents are required to continue your filing process.',
+    ctaText: activeRequest.status === 'REVIEW' ? 'Review Draft' : 'Upload Now',
+    icon: activeRequest.status === 'REVIEW' ? 'fileText' : 'upload',
+    bg: 'linear-gradient(135deg, #4f46e5 0%, #1e1b4b 100%)',
+    action: () => {
+      setActiveSubView('documents');
     }
-
-    // 2. Documents Required
-    if (activeRequest.status === 'DOCUMENTS_PENDING') {
-      const pendingDoc = documentChecklist.find(d => !d.uploaded);
-      return {
-        title: `Upload ${pendingDoc?.label || 'Form 16 / Proofs'}`,
-        desc: 'Filing verification requires additional identity or financial proof.',
-        ctaText: 'Upload Now',
-        icon: 'plus',
-        bg: 'linear-gradient(135deg, #1e3a8a 0%, #172554 100%)',
-        accentColor: '#93c5fd',
-        action: () => {
-          setActiveSubView('documents');
-        }
-      };
-    }
-
-    // 3. Draft Review Required
-    if (activeRequest.status === 'REVIEW') {
-      return {
-        title: 'Review Draft Return',
-        desc: 'Please verify the final tax calculation sheet and approve the return.',
-        ctaText: 'Review Draft',
-        icon: 'fileText',
-        bg: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)',
-        accentColor: '#5eead4',
-        action: () => {
-          addNotification('Opening final tax declaration draft return...', 'info');
-        }
-      };
-    }
-
-    // 4. Consultation Call Starting Soon
-    if (activeBookings.length > 0) {
-      const nextBooking = activeBookings[0];
-      return {
-        title: 'Join Consultation',
-        desc: `Join your expert CA partner call scheduled today at ${nextBooking.time}.`,
-        ctaText: 'Join Call',
-        icon: 'phone',
-        bg: 'linear-gradient(135deg, #1f2937 0%, #111827 100%)',
-        accentColor: '#cbd5e1',
-        action: () => {
-          handleJoinConsultation(nextBooking);
-        }
-      };
-    }
-
-    // Default Case: No blocking task
-    return {
-      title: 'Filing In Progress',
-      desc: 'Our CA partners are analyzing documents. We will notify you when a draft is ready.',
-      ctaText: 'View Timeline',
-      icon: 'check',
-      bg: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-      accentColor: '#94a3b8',
-      action: () => {
-        setActiveSubView('timeline');
-      }
-    };
   };
 
-  const action = getRequiredAction();
-
-  // MAIN WORKSPACE VIEW V4 (MAX 5 SECTIONS, NO SCROLL)
   return (
     <div
       style={{
@@ -764,16 +729,18 @@ export default function Tracking({ requests = [], documents = [], selectedReques
         flexDirection: 'column',
         height: 'calc(100vh - 80px - env(safe-area-inset-bottom))',
         justifyContent: 'space-between',
-        paddingInline: '16px',
-        paddingTop: '12px',
-        paddingBottom: '12px',
+        paddingInline: '20px',
+        paddingTop: '16px',
+        paddingBottom: '16px',
         boxSizing: 'border-box',
-        overflow: 'hidden'
+        overflowY: 'auto',
+        backgroundColor: '#f8fafc',
+        gap: 16
       }}
       className="animate-fade-in-up"
     >
-      {/* Top Header bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, height: 44 }}>
+      {/* Header bar (Exactly like Mockup 1) */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 48, position: 'relative' }}>
         <button
           type="button"
           onClick={() => {
@@ -782,117 +749,130 @@ export default function Tracking({ requests = [], documents = [], selectedReques
           }}
           aria-label="Back to home dashboard"
           style={{
-            width: 36,
-            height: 36,
+            width: 44,
+            height: 44,
             borderRadius: '50%',
-            border: '1px solid var(--border-color)',
-            background: 'var(--bg-card)',
-            color: 'var(--text-primary)',
+            border: 'none',
+            background: '#ffffff',
+            color: '#0f172a',
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            flexShrink: 0
+            boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+            outline: 'none'
           }}
         >
-          <Icon name="back" size={18} color="var(--text-primary)" />
+          <Icon name="back" size={20} color="#0f172a" strokeWidth={2.5} />
         </button>
 
-        <h2 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 900, color: 'var(--text-primary)', textAlign: 'center' }}>
-          Workspace V4
-        </h2>
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 950, color: '#0f172a' }}>
+            Case Workspace
+          </h2>
+          <div style={{
+            fontSize: '0.72rem',
+            color: '#64748b',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            marginTop: 2,
+            fontWeight: 500
+          }}>
+            Case ID: 3874FO
+            <button type="button" style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex' }}>
+              <Icon name="copy" size={10} color="#64748b" />
+            </button>
+          </div>
+        </div>
 
-        <div style={{
-          borderRadius: 999,
-          padding: '4px 10px',
-          border: '1px solid rgba(16,185,129,0.25)',
-          background: 'rgba(16, 185, 129, 0.05)',
-          color: '#10b981',
-          fontSize: '0.62rem',
-          fontWeight: 800,
-          whiteSpace: 'nowrap',
-          fontFamily: 'monospace'
-        }}>
-          ID: {activeRequest.id.slice(-6).toUpperCase()}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: '50%',
+              border: 'none',
+              background: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.03)',
+              position: 'relative'
+            }}
+          >
+            <Icon name="bell" size={18} color="#0f172a" />
+            <span style={{ position: 'absolute', top: 12, right: 12, width: 6, height: 6, borderRadius: '50%', backgroundColor: '#ef4444' }} />
+          </button>
+          <button
+            type="button"
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: '50%',
+              border: 'none',
+              background: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
+            }}
+          >
+            <Icon name="dots" size={18} color="#0f172a" />
+          </button>
         </div>
       </div>
 
-      {/* Case Selector Tabs (Compact inline) */}
-      {requests.length > 1 && (
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', width: '100%', paddingBottom: 2, scrollbarWidth: 'none', height: 38, alignItems: 'center' }}>
-          {requests.map((r) => {
-            const isSelected = activeRequest.id === r.id;
-            return (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => handleSelectRequest(r.id)}
-                aria-pressed={isSelected}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 999,
-                  border: isSelected ? '1px solid var(--secondary)' : '1px solid var(--border-color)',
-                  background: isSelected ? 'var(--primary-container)' : 'var(--bg-card)',
-                  color: isSelected ? 'var(--secondary)' : 'var(--text-secondary)',
-                  fontSize: '0.68rem',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  height: 28,
-                  display: 'inline-flex',
-                  alignItems: 'center'
-                }}
-              >
-                {r.serviceName}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* SECTION 1: REQUIRED ACTION CARD (THE ONLY PROMINENT CTA BUTTON) */}
+      {/* SECTION 1: REQUIRED ACTION CARD */}
       <div
         className="screen-hero animate-scale-in"
         style={{
-          padding: '12px 14px',
+          padding: '18px 20px',
           background: action.bg,
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          borderRadius: 20,
+          borderRadius: 24,
           display: 'flex',
           flexDirection: 'column',
-          gap: 8,
-          boxShadow: 'var(--shadow-md)',
+          gap: 12,
+          boxShadow: '0 12px 24px rgba(79, 70, 229, 0.12)',
           position: 'relative',
           overflow: 'hidden',
           width: '100%',
           boxSizing: 'border-box'
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', paddingRight: '90px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{
-              fontSize: '0.52rem',
+              fontSize: '0.6rem',
               fontWeight: 800,
-              background: 'rgba(255, 255, 255, 0.12)',
-              color: action.accentColor,
-              padding: '2px 5px',
+              background: 'rgba(255, 255, 255, 0.18)',
+              color: '#ffffff',
+              padding: '3px 8px',
               borderRadius: 99,
               textTransform: 'uppercase',
-              width: 'fit-content'
+              width: 'fit-content',
+              letterSpacing: '0.4px'
             }}>
-              Required Step
+              <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', backgroundColor: '#ffffff', marginRight: 5, verticalAlign: 'middle' }} />
+              ACTION REQUIRED
             </span>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 950, color: '#ffffff', margin: 0, lineHeight: 1.25 }}>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 950, color: '#ffffff', margin: 0, lineHeight: 1.25 }}>
               {action.title}
-            </h3>
-          </div>
-          <div style={{ opacity: 0.8, color: '#ffffff' }}>
-            <Icon name={action.icon} size={28} strokeWidth={1.8} />
+            </h2>
           </div>
         </div>
-        <p style={{ fontSize: '0.68rem', color: '#cbd5e1', margin: 0, lineHeight: 1.3, fontWeight: 500 }}>
+
+        {/* Purple 3D folder graphic asset */}
+        <div style={{ position: 'absolute', right: 10, top: 12, width: 88, height: 88, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src="/purple_3d_folder.png" alt="Folder graphic" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        </div>
+
+        <p style={{ fontSize: '0.74rem', color: 'rgba(255, 255, 255, 0.85)', margin: 0, lineHeight: 1.35, fontWeight: 500, paddingRight: '80px' }}>
           {action.desc}
         </p>
+
         <button
           type="button"
           onClick={() => {
@@ -902,296 +882,459 @@ export default function Tracking({ requests = [], documents = [], selectedReques
           style={{
             width: '100%',
             backgroundColor: '#ffffff',
-            color: '#0f172a',
+            color: '#4f46e5',
             fontWeight: 800,
-            borderRadius: 10,
-            padding: '8px 10px',
-            fontSize: '0.74rem',
+            borderRadius: 14,
+            padding: '11px',
+            fontSize: '0.8rem',
             border: 'none',
             cursor: 'pointer',
             textAlign: 'center',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 4
+            gap: 4,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            outline: 'none'
           }}
         >
           {action.ctaText}
-          <Icon name="chevronRight" size={12} color="#0f172a" strokeWidth={3} />
+          <Icon name="chevronRight" size={14} color="#4f46e5" strokeWidth={3} />
         </button>
       </div>
 
-      {/* SECTION 2: PROGRESS CARD (CLICK TRIGGER REDIRECTS TO TIMELINE SUBVIEW) */}
+      {/* SECTION 2: PROGRESS CARD WITH STEP TIMELINE */}
       <div
         className="card animate-scale-in"
-        onClick={() => {
-          playHaptic();
-          setActiveSubView('timeline');
-        }}
         style={{
-          padding: 12,
+          padding: 16,
           display: 'flex',
-          alignItems: 'center',
-          gap: 12,
+          flexDirection: 'column',
+          gap: 14,
           width: '100%',
           boxSizing: 'border-box',
-          borderRadius: 20,
-          cursor: 'pointer',
-          border: '1px solid var(--border-color)'
+          borderRadius: 24,
+          backgroundColor: '#ffffff',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.01)',
+          border: 'none'
         }}
-        role="button"
-        tabIndex={0}
-        aria-label={`Filing progress is ${activeRequest.progressPercent || 30}% complete`}
       >
-        <div style={{ position: 'relative', width: 48, height: 48, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="48" height="48" viewBox="0 0 36 36">
-            <circle cx="18" cy="18" r="16" fill="none" stroke="var(--border-color)" strokeWidth="3.2" />
-            <circle
-              cx="18"
-              cy="18"
-              r="16"
-              fill="none"
-              stroke="var(--primary)"
-              strokeWidth="3.5"
-              strokeDasharray={`${activeRequest.progressPercent || 30}, 100`}
-              strokeLinecap="round"
-              style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%', transition: 'stroke-dasharray 0.6s ease' }}
-            />
-          </svg>
-          <span style={{ position: 'absolute', fontSize: '0.74rem', fontWeight: 950, color: 'var(--text-primary)' }}>
-            {activeRequest.progressPercent || 30}%
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          {/* Progress Circle display */}
+          <div style={{ position: 'relative', width: 56, height: 56, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width="56" height="56" viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="16" fill="none" stroke="#f1f5f9" strokeWidth="3.2" />
+              <circle
+                cx="18"
+                cy="18"
+                r="16"
+                fill="none"
+                stroke="#0d9488"
+                strokeWidth="3.5"
+                strokeDasharray={`${activeRequest.progressPercent || 40}, 100`}
+                strokeLinecap="round"
+                style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%', transition: 'stroke-dasharray 0.6s ease' }}
+              />
+            </svg>
+            <span style={{ position: 'absolute', fontSize: '0.86rem', fontWeight: 950, color: '#0f172a' }}>
+              {activeRequest.progressPercent || 40}%
+            </span>
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <h4 style={{ margin: '0', fontSize: '0.92rem', fontWeight: 900, color: '#0f172a' }}>
+                  {activeRequest.serviceName}
+                </h4>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 3 }}>
+                  <span style={{
+                    fontSize: '0.58rem',
+                    padding: '2px 6px',
+                    borderRadius: 4,
+                    backgroundColor: '#e0e7ff',
+                    color: '#4f46e5',
+                    fontWeight: 800,
+                    textTransform: 'uppercase'
+                  }}>
+                    {activeRequest.status?.replace('_', ' ')}
+                  </span>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <span style={{ fontSize: '0.62rem', color: '#64748b', fontWeight: 500, display: 'block' }}>ETA</span>
+                <span style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0f172a' }}>2 days</span>
+              </div>
+            </div>
+            <p style={{ margin: '6px 0 0', fontSize: '0.72rem', color: '#64748b', fontWeight: 500 }}>
+              Next Step: <strong style={{ color: '#4f46e5' }}>Document Verification</strong>
+            </p>
+          </div>
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h4 style={{ margin: '0', fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {activeRequest.serviceName}
-          </h4>
-          <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-            Stage: <strong style={{ color: 'var(--primary)' }}>{activeRequest.status?.replace('_', ' ')}</strong> · ETA: 2d
-          </p>
+
+        {/* Custom Horizontal Step Timeline (Exactly like Mockup 1) */}
+        <div style={{ position: 'relative', marginTop: 6, paddingBottom: 4 }}>
+          {/* Grey background timeline line */}
+          <div style={{ position: 'absolute', top: 13, left: '10%', right: '10%', height: 2, backgroundColor: '#f1f5f9', zIndex: 1 }} />
+          {/* Active timeline line */}
+          <div style={{ position: 'absolute', top: 13, left: '10%', width: '0%', height: 2, backgroundColor: '#4f46e5', zIndex: 2 }} />
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', zIndex: 3 }}>
+            {[
+              { label: 'Documents Pending', icon: 'fileText', active: true },
+              { label: 'Verification', icon: 'shield', active: false },
+              { label: 'Review', icon: 'user', active: false },
+              { label: 'Drafting', icon: 'pencil', active: false },
+              { label: 'Filing', icon: 'paperplane', active: false }
+            ].map((step, idx) => (
+              <div key={step.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '18%' }}>
+                <div style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  backgroundColor: step.active ? '#4f46e5' : '#ffffff',
+                  border: step.active ? 'none' : '1px solid #cbd5e1',
+                  color: step.active ? '#ffffff' : '#94a3b8',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.03)'
+                }}>
+                  <Icon name={step.icon} size={13} color={step.active ? '#ffffff' : '#94a3b8'} strokeWidth={2} />
+                </div>
+                <span style={{
+                  fontSize: '0.58rem',
+                  fontWeight: step.active ? 800 : 500,
+                  color: step.active ? '#0f172a' : '#94a3b8',
+                  textAlign: 'center',
+                  marginTop: 6,
+                  lineHeight: 1.1,
+                  display: 'block'
+                }}>
+                  {step.label}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-        <Icon name="chevronRight" size={14} color="var(--text-secondary)" />
+
+        <button
+          type="button"
+          onClick={() => {
+            playHaptic();
+            setActiveSubView('timeline');
+          }}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#4f46e5',
+            fontSize: '0.74rem',
+            fontWeight: 800,
+            cursor: 'pointer',
+            textAlign: 'center',
+            width: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 2,
+            marginTop: 4,
+            outline: 'none'
+          }}
+        >
+          View Full Timeline <Icon name="chevronRight" size={10} color="#4f46e5" strokeWidth={3} />
+        </button>
       </div>
 
-      {/* SECTION 3: ASSIGNED EXPERT CARD (DIRECT CHAT Short) */}
-      {activeRequest.assignedExpert ? (
+      {/* SECTION 3: ASSIGNED EXPERT CARD */}
+      {activeRequest.assignedExpert && (
         <div
           className="card"
           onClick={() => handleAction('Chat')}
           style={{
-            padding: 12,
-            borderRadius: 20,
-            border: '1px solid var(--border-color)',
+            padding: 14,
+            borderRadius: 24,
+            border: 'none',
+            backgroundColor: '#ffffff',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 10,
             width: '100%',
             boxSizing: 'border-box',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.02)'
           }}
-          role="button"
-          tabIndex={0}
-          aria-label={`Chat with CA advisor ${activeRequest.assignedExpert.user?.name}`}
         >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', border: '1.5px solid var(--border-color)', flexShrink: 0 }}>
-              <img src={activeRequest.assignedExpert.user?.photo || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=80&q=80'} alt={activeRequest.assignedExpert.user?.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              <img
+                src={activeRequest.assignedExpert.user?.photo || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=80&q=80'}
+                alt={activeRequest.assignedExpert.user?.name}
+                style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', border: '1px solid #e2e8f0' }}
+              />
+              <span style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: '50%', backgroundColor: '#22c55e', border: '2px solid #ffffff' }} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                {activeRequest.assignedExpert.user?.name || 'Chartered Accountant'}
+              <h3 style={{ fontSize: '0.86rem', fontWeight: 900, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+                {activeRequest.assignedExpert.user?.name || 'Akash Sharma'}
                 <span style={{
-                  width: 11,
-                  height: 11,
+                  width: 14,
+                  height: 14,
                   borderRadius: '50%',
                   backgroundColor: '#3b82f6',
                   color: '#ffffff',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '0.45rem',
+                  fontSize: '0.55rem',
                   fontWeight: 900
                 }}>✓</span>
-              </div>
-              <div style={{ fontSize: '0.62rem', color: 'var(--text-secondary)', fontWeight: 500, marginTop: 1 }}>
-                {activeRequest.assignedExpert.specialization || 'Taxation Expert'} · SLA: &lt;2h
+              </h3>
+              <span style={{ fontSize: '0.68rem', color: '#64748b', display: 'block', marginTop: 1, fontWeight: 500 }}>
+                {activeRequest.assignedExpert.specialization || 'General Tax Consultant'}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <span style={{ fontSize: '0.64rem', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  🕒 Responds within <strong style={{ color: '#0d9488' }}>2 hours</strong>
+                </span>
+                <span style={{ fontSize: '0.64rem', color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+                  ⭐ <strong style={{ color: '#0f172a' }}>5.0</strong> (128 reviews)
+                </span>
               </div>
             </div>
           </div>
-          <Icon name="chat" size={16} color="var(--primary)" />
-        </div>
-      ) : (
-        <div className="card" style={{ padding: 12, borderRadius: 20, border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: 10, width: '100%', boxSizing: 'border-box' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: 'rgba(13,148,136,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="phone" size={16} color="var(--primary)" />
-          </div>
-          <div>
-            <h4 style={{ margin: 0, fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-primary)' }}>Assigning Advisor</h4>
-            <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: 'var(--text-secondary)', fontWeight: 500 }}>
-              We will match a certified advisor shortly.
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleAction('Chat');
+            }}
+            style={{
+              padding: '8px 14px',
+              borderRadius: 10,
+              border: 'none',
+              backgroundColor: '#eff6ff',
+              color: '#2563eb',
+              fontSize: '0.74rem',
+              fontWeight: 800,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              outline: 'none'
+            }}
+          >
+            <Icon name="chat" size={12} color="#2563eb" />
+            Chat
+          </button>
         </div>
       )}
 
-      {/* SECTION 4: UPCOMING CONSULTATION CARD (CLICK TRIGGER EXPANDS DETAIL CONTROLS) */}
-      {activeBookings.length > 0 ? (
+      {/* SECTION 4: UPCOMING CONSULTATION CARD */}
+      {activeBookings.length > 0 && (
         <div
           className="card"
           style={{
-            padding: 12,
-            borderRadius: 20,
+            padding: 16,
+            borderRadius: 24,
             display: 'flex',
             flexDirection: 'column',
-            gap: 8,
+            gap: 12,
             width: '100%',
             boxSizing: 'border-box',
-            border: '1px solid var(--border-color)'
+            border: 'none',
+            backgroundColor: '#ffffff',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.01)'
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Consultation Scheduled
+          <div
+            onClick={() => {
+              playHaptic();
+              setConsultationExpanded(!consultationExpanded);
+            }}
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+          >
+            <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#0f172a' }}>
+              Upcoming Consultation
             </span>
-            <button
-              type="button"
-              onClick={() => {
-                playHaptic();
-                setConsultationExpanded(!consultationExpanded);
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 4,
-                cursor: 'pointer',
-                display: 'inline-flex'
-              }}
-              aria-expanded={consultationExpanded}
-              aria-label="Toggle details"
-            >
-              <Icon name={consultationExpanded ? 'chevronUp' : 'chevronDown'} size={14} color="var(--text-secondary)" />
-            </button>
+            <Icon name={consultationExpanded ? 'chevronUp' : 'chevronDown'} size={16} color="#0d9488" strokeWidth={2.5} />
           </div>
 
-          {activeBookings.slice(0, 1).map((b) => (
-            <div key={b.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Icon name={b.type === 'VIDEO' ? 'video' : 'phone'} size={12} color="var(--primary)" />
-                    {b.type === 'VIDEO' ? 'Video Review' : 'Telephonic Call'}
-                  </div>
-                  <div style={{ fontSize: '0.64rem', color: 'var(--text-secondary)', marginTop: 2 }}>
-                    📅 {b.date} · 🕒 {b.time}
-                  </div>
+          {consultationExpanded && activeBookings.slice(0, 1).map((b) => (
+            <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 2 }}>
+              {/* Calendar Block (Mockup 1) */}
+              <div style={{
+                width: 52,
+                height: 56,
+                borderRadius: 12,
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                border: '1px solid #e2e8f0',
+                flexShrink: 0
+              }}>
+                <div style={{ backgroundColor: '#0d9488', color: '#ffffff', fontSize: '0.52rem', fontWeight: 800, textAlign: 'center', paddingBlock: 2, textTransform: 'uppercase' }}>
+                  MAY
                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, backgroundColor: '#f8fafc' }}>
+                  <span style={{ fontSize: '1rem', fontWeight: 950, color: '#0f172a', lineHeight: 1 }}>17</span>
+                  <span style={{ fontSize: '0.52rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginTop: 1 }}>FRI</span>
+                </div>
+              </div>
 
+              {/* Details Column */}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.76rem', color: '#0f172a', fontWeight: 800, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  🕒 11:30 AM - 12:00 PM
+                </span>
+                <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  📞 Telephonic Call
+                </span>
+                <button type="button" style={{ background: 'none', border: 'none', padding: 0, color: '#0d9488', fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 2 }}>
+                  📅 Add to calendar
+                </button>
+              </div>
+
+              {/* Buttons Column */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100px', flexShrink: 0 }}>
                 <button
                   type="button"
                   onClick={() => handleJoinConsultation(b)}
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: '4px 8px',
-                    color: 'var(--primary)',
-                    fontSize: '0.72rem',
+                    backgroundColor: '#0d9488',
+                    color: '#ffffff',
+                    fontSize: '0.7rem',
                     fontWeight: 800,
+                    borderRadius: 8,
+                    padding: '8px',
+                    border: 'none',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 2
+                    justifyContent: 'center',
+                    gap: 3
                   }}
                 >
-                  Join Call <Icon name="chevronRight" size={10} color="var(--primary)" strokeWidth={3} />
+                  📞 Join Call
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playHaptic();
+                    setShowRescheduleModal(true);
+                  }}
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: '#0d9488',
+                    fontSize: '0.7rem',
+                    fontWeight: 800,
+                    borderRadius: 8,
+                    padding: '7px',
+                    border: '1px solid #0d9488',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Reschedule
                 </button>
               </div>
-
-              {consultationExpanded && (
-                <div style={{ padding: 8, background: 'var(--bg-surface-variant)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 2 }} className="animate-fade-in-up">
-                  <div style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', lineHeight: 1.2 }}>
-                    Ensure stable internet and have financial receipts ready.
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        playHaptic();
-                        setActiveSubView('consultations');
-                      }}
-                      style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '0.64rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}
-                    >
-                      History
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        playHaptic();
-                        setShowRescheduleModal(true);
-                      }}
-                      style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.64rem', fontWeight: 800, cursor: 'pointer', padding: 0 }}
-                    >
-                      Reschedule
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           ))}
         </div>
-      ) : (
-        <div className="card" style={{ padding: 12, borderRadius: 20, border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: 10, width: '100%', boxSizing: 'border-box' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: 'rgba(59,130,246,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="calendar" size={16} color="var(--primary)" />
-          </div>
-          <div>
-            <h4 style={{ margin: 0, fontSize: '0.78rem', fontWeight: 900, color: 'var(--text-primary)' }}>No Consultation Call</h4>
-            <p style={{ margin: '2px 0 0', fontSize: '0.62rem', color: 'var(--text-secondary)' }}>Configure calls on need basis.</p>
-          </div>
-        </div>
       )}
 
-      {/* SECTION 5: DOCUMENTS SUMMARY CARD (CLICK TRIGGER REDIRECTS TO DOCUMENTS LIST SUBVIEW) */}
+      {/* SECTION 5: DOCUMENTS SUMMARY CARD */}
       <div
         className="card"
-        onClick={() => {
-          playHaptic();
-          setActiveSubView('documents');
-        }}
         style={{
-          padding: 12,
-          borderRadius: 20,
+          padding: 16,
+          borderRadius: 24,
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 10,
+          flexDirection: 'column',
+          gap: 12,
           width: '100%',
           boxSizing: 'border-box',
-          cursor: 'pointer',
-          border: '1px solid var(--border-color)'
+          border: 'none',
+          backgroundColor: '#ffffff',
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.01)'
         }}
-        role="button"
-        tabIndex={0}
-        aria-label={`Documents: ${docCounts.uploaded} of ${docCounts.total} uploaded`}
       >
-        <div>
-          <span style={{ fontSize: '0.64rem', fontWeight: 800, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-            Checklist Status
+        <div
+          onClick={() => {
+            playHaptic();
+            setDocumentsExpanded(!documentsExpanded);
+          }}
+          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+        >
+          <span style={{ fontSize: '0.78rem', fontWeight: 900, color: '#0f172a' }}>
+            Documents Summary
           </span>
-          <div style={{ display: 'flex', gap: 6, marginTop: 2 }}>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-primary)', fontWeight: 700 }}>
-              Uploaded: <strong style={{ color: '#10b981' }}>{docCounts.uploaded} / {docCounts.total}</strong>
-            </span>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>|</span>
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700 }}>
-              Pending: <strong>{docCounts.pending}</strong>
-            </span>
-          </div>
+          <Icon name={documentsExpanded ? 'chevronUp' : 'chevronDown'} size={16} color="#0d9488" strokeWidth={2.5} />
         </div>
-        <Icon name="chevronRight" size={14} color="var(--text-secondary)" />
+
+        {documentsExpanded && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginTop: 2 }}>
+            <div style={{ display: 'flex', gap: 8, flex: 1 }}>
+              {/* Uploaded Info Pill */}
+              <div style={{
+                backgroundColor: '#e6fcf5',
+                borderRadius: 10,
+                padding: '8px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}>
+                <span style={{ color: '#0d9488', fontSize: '0.8rem' }}>✓</span>
+                <div>
+                  <div style={{ fontSize: '0.54rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Uploaded</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 950, color: '#0f172a' }}>{docCounts.uploaded} / {docCounts.total}</div>
+                </div>
+              </div>
+
+              {/* Pending Info Pill */}
+              <div style={{
+                backgroundColor: '#fff7ed',
+                borderRadius: 10,
+                padding: '8px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6
+              }}>
+                <span style={{ color: '#ea580c', fontSize: '0.8rem' }}>🕒</span>
+                <div>
+                  <div style={{ fontSize: '0.54rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Pending</div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 950, color: '#0f172a' }}>{docCounts.pending}</div>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                playHaptic();
+                setActiveSubView('documents');
+              }}
+              style={{
+                backgroundColor: '#f1f5f9',
+                color: '#0d9488',
+                border: 'none',
+                borderRadius: 10,
+                padding: '8px 12px',
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                flexShrink: 0
+              }}
+            >
+              Manage Documents <Icon name="chevronRight" size={10} color="#0d9488" strokeWidth={3} />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Invoices Access Link */}
+      {/* Center link below Section 5 */}
       <div style={{ display: 'flex', justifyContent: 'center', height: 20 }}>
         <button
           type="button"
@@ -1202,15 +1345,18 @@ export default function Tracking({ requests = [], documents = [], selectedReques
           style={{
             background: 'none',
             border: 'none',
-            color: 'var(--text-secondary)',
-            fontSize: '0.64rem',
+            color: '#4f46e5',
+            fontSize: '0.72rem',
             fontWeight: 800,
             cursor: 'pointer',
             padding: 2,
-            textDecoration: 'underline'
+            textDecoration: 'underline',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4
           }}
         >
-          View Billing Invoices
+          📄 View Billing & Invoices
         </button>
       </div>
 
@@ -1229,24 +1375,24 @@ export default function Tracking({ requests = [], documents = [], selectedReques
           alignItems: 'center',
           justifyContent: 'center'
         }}>
-          <div className="card animate-scale-in" style={{ width: '90%', maxWidth: '320px', padding: '20px', backgroundColor: 'var(--bg-card)', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '14px', fontSize: '1rem', fontWeight: 900, color: 'var(--text-primary)' }}>Reschedule Consultation</h3>
+          <div className="card animate-scale-in" style={{ width: '90%', maxWidth: '320px', padding: '20px', backgroundColor: '#ffffff', borderRadius: '20px', border: '1px solid #e2e8f0' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '14px', fontSize: '1rem', fontWeight: 900, color: '#0f172a' }}>Reschedule Consultation</h3>
             
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-secondary)' }} id="lbl-resched-date">New Date</label>
-              <input type="date" aria-labelledby="lbl-resched-date" style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box' }} value={rescheduleData.date} onChange={e => setRescheduleData({...rescheduleData, date: e.target.value})} />
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.76rem', fontWeight: 700, color: '#64748b' }} id="lbl-resched-date">New Date</label>
+              <input type="date" aria-labelledby="lbl-resched-date" style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a', boxSizing: 'border-box' }} value={rescheduleData.date} onChange={e => setRescheduleData({...rescheduleData, date: e.target.value})} />
             </div>
 
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-secondary)' }} id="lbl-resched-time">New Time</label>
-              <input type="time" aria-labelledby="lbl-resched-time" style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', boxSizing: 'border-box' }} value={rescheduleData.time} onChange={e => setRescheduleData({...rescheduleData, time: e.target.value})} />
+              <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.76rem', fontWeight: 700, color: '#64748b' }} id="lbl-resched-time">New Time</label>
+              <input type="time" aria-labelledby="lbl-resched-time" style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a', boxSizing: 'border-box' }} value={rescheduleData.time} onChange={e => setRescheduleData({...rescheduleData, time: e.target.value})} />
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>
               <button 
                 type="button"
                 onClick={() => setShowRescheduleModal(false)}
-                style={{ flex: 1, padding: '8px', borderRadius: '10px', border: '1px solid var(--border-color)', backgroundColor: 'transparent', color: 'var(--text-primary)', fontWeight: 800, cursor: 'pointer', minHeight: 38 }}>
+                style={{ flex: 1, padding: '8px', borderRadius: '10px', border: '1px solid #e2e8f0', backgroundColor: 'transparent', color: '#64748b', fontWeight: 800, cursor: 'pointer', minHeight: 38 }}>
                 Cancel
               </button>
               <button 
@@ -1264,7 +1410,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
                     setIsRescheduling(false);
                   }, 800);
                 }}
-                style={{ flex: 1, padding: '8px', borderRadius: '10px', border: 'none', backgroundColor: 'var(--primary)', color: '#fff', fontWeight: 800, cursor: 'pointer', minHeight: 38 }}>
+                style={{ flex: 1, padding: '8px', borderRadius: '10px', border: 'none', backgroundColor: '#0d9488', color: '#fff', fontWeight: 800, cursor: 'pointer', minHeight: 38 }}>
                 {isRescheduling ? 'Saving...' : 'Confirm'}
               </button>
             </div>
