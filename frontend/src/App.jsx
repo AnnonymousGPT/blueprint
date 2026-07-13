@@ -883,13 +883,15 @@ export default function App() {
       case 'chat':
         const assignedExpert = !simulateEmptyState && requests.find(r => r.assignedExpert)?.assignedExpert;
         const chatPartnerId = assignedExpert?.user?.id || assignedExpert?.userId || 'support';
-        const chatPartnerName = assignedExpert?.user?.name || 'Blueprint Support';
+        const chatPartnerName = assignedExpert?.user?.name || 'Akash Sharma';
+        const chatPartnerPhoto = assignedExpert?.user?.photo || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&q=80';
         return (
           <div style={{ position: 'relative', height: '100%' }}>
             <ChatBox 
               currentUserId={user?.id || 'guest'}
               otherUserId={chatPartnerId}
               otherUserName={chatPartnerName}
+              otherUserPhoto={chatPartnerPhoto}
               onClose={() => setActiveTab('home')}
               addNotification={addNotification}
             />
