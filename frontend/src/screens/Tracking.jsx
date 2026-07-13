@@ -100,7 +100,6 @@ export default function Tracking({ requests = [], documents = [], selectedReques
   const [rescheduleData, setRescheduleData] = useState({ date: '', time: '' });
   const [isRescheduling, setIsRescheduling] = useState(false);
   
-  const [showChat, setShowChat] = useState(false);
 
   // Sync network state
   useEffect(() => {
@@ -163,7 +162,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
     playHaptic();
     if (type === 'Chat') {
       trackEvent('expert_chat_opened', { request_id: activeRequest.id });
-      setShowChat(true);
+      setActiveTab('chat');
     } else {
       trackEvent('expert_call_dialed', { request_id: activeRequest.id });
       addNotification(`Calling CA ${activeRequest?.assignedExpert?.user?.name || 'Advisor'}...`, 'info');
@@ -802,40 +801,7 @@ export default function Tracking({ requests = [], documents = [], selectedReques
         </section>
       )}
 
-      {/* Chat Drawer Overlay */}
-      {showChat && activeRequest.assignedExpert && (
-        <div
-          onClick={() => setShowChat(false)}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.4)',
-            zIndex: 1000
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: '80%'
-            }}
-          >
-            <ChatBox
-              otherUserId={activeRequest.assignedExpert.userId || activeRequest.assignedExpert.user?.id}
-              otherUserName={activeRequest.assignedExpert.user?.name || 'Chartered Accountant'}
-              currentUserId={user?.id || 'client-1'}
-              onClose={() => setShowChat(false)}
-              addNotification={addNotification}
-            />
-          </div>
-        </div>
-      )}
+
 
       {/* Reschedule Calendar Modal */}
       {showRescheduleModal && (
