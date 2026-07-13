@@ -36,6 +36,7 @@ export default function Documents({ documents = [], onUploadSuccess, addNotifica
   });
 
   const [stagedFile, setStagedFile] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   // Monitor network connection
   useEffect(() => {
@@ -113,6 +114,45 @@ export default function Documents({ documents = [], onUploadSuccess, addNotifica
     });
     trackEvent('document_upload_initiated', { name: file.name, category: uploadCategory });
     addNotification(`${file.name} selected! Confirm to upload.`, 'success');
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!isOffline) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (isOffline) return;
+
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+
+    const fileType = file.type || '';
+    const allowed = ['image/jpeg', 'image/png', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    const isAllowed = allowed.includes(fileType) || file.name.endsWith('.pdf') || file.name.endsWith('.doc') || file.name.endsWith('.docx');
+    
+    if (!isAllowed) {
+      addNotification('Invalid file type. Please upload a PDF, DOC, or Image.', 'error');
+      return;
+    }
+
+    playHaptic('medium');
+    setStagedFile({
+      realFile: file,
+      name: file.name,
+      category: uploadCategory,
+      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+    });
+    trackEvent('document_upload_initiated', { name: file.name, category: uploadCategory });
+    addNotification(`${file.name} dropped! Confirm to upload.`, 'success');
   };
 
   useEffect(() => {
@@ -718,21 +758,25 @@ export default function Documents({ documents = [], onUploadSuccess, addNotifica
           <div style={{ display: 'grid', gridTemplateColumns: '2.1fr 1fr', gap: '10px', width: '100%' }}>
             <button 
               type="button"
-              onClick={handleSelectFileClick}
+              onClick={() => triggerFilePick(uploadCategory)}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
               disabled={isOffline}
               style={{
-                border: '2px dashed #3b82f6',
+                border: isDragging ? '2px dashed #10b981' : '2px dashed #3b82f6',
                 borderRadius: '14px',
                 padding: '16px 10px',
                 textAlign: 'center',
                 cursor: isOffline ? 'not-allowed' : 'pointer',
-                backgroundColor: 'rgba(59, 130, 246, 0.02)',
+                backgroundColor: isDragging ? 'rgba(16, 185, 129, 0.08)' : 'rgba(59, 130, 246, 0.02)',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '4px',
-                minHeight: 100
+                minHeight: 100,
+                transition: 'all 0.2s ease'
               }}
             >
               {uploading ? (

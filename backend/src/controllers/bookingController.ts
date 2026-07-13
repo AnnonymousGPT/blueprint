@@ -64,6 +64,9 @@ export const createBooking = async (req: AuthenticatedRequest, res: Response) =>
     return res.status(201).json({ success: true, data: booking });
   } catch (error: any) {
     console.error('Failed to create booking:', error?.message);
+    if (error?.code === 'P2002' || error?.message?.includes('Unique constraint')) {
+      return res.status(400).json({ error: 'This time slot is already booked. Please choose a different date or time.' });
+    }
     return res.status(500).json({ error: 'Failed to create booking' });
   }
 };

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { api } from '../services/apiService';
-import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 
 function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2.2 }) {
   const common = {
@@ -110,11 +110,23 @@ export default function Booking({ recommendedService, bookingSummary, onBackToWi
   }, []);
 
   // Safe Capacitor Haptic trigger
-  const playHaptic = async () => {
+  const playHaptic = async (type = 'light') => {
     try {
-      await Haptics.impact({ style: ImpactStyle.Light });
+      if (type === 'light') {
+        await Haptics.impact({ style: ImpactStyle.Light });
+      } else if (type === 'medium') {
+        await Haptics.impact({ style: ImpactStyle.Medium });
+      } else if (type === 'success') {
+        await Haptics.notification({ type: NotificationType.Success });
+      } else if (type === 'error') {
+        await Haptics.notification({ type: NotificationType.Error });
+      }
     } catch (e) {
-      if (navigator.vibrate) navigator.vibrate(30);
+      if (navigator.vibrate) {
+        if (type === 'success') navigator.vibrate([40, 40, 40]);
+        else if (type === 'error') navigator.vibrate([60, 120, 60]);
+        else navigator.vibrate(30);
+      }
     }
   };
 

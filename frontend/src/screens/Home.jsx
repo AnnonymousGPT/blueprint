@@ -327,24 +327,24 @@ export default function Home({
       <div className="screen-shell" style={{ paddingInline: '8px', gap: 16 }}>
         {/* Header Shimmer */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 45, marginTop: 4 }}>
-          <div className="skeleton-container animate-pulse-slow" style={{ width: 120, height: 24, borderRadius: 6 }} />
+          <div className="skeleton-container" style={{ width: 120, height: 24, borderRadius: 6 }} />
           <div style={{ display: 'flex', gap: 8 }}>
-            <div className="skeleton-container animate-pulse-slow" style={{ width: 140, height: 38, borderRadius: 20 }} />
-            <div className="skeleton-container animate-pulse-slow" style={{ width: 34, height: 34, borderRadius: '50%' }} />
+            <div className="skeleton-container" style={{ width: 140, height: 38, borderRadius: 20 }} />
+            <div className="skeleton-container" style={{ width: 34, height: 34, borderRadius: '50%' }} />
           </div>
         </div>
         {/* Banner Shimmer */}
-        <div className="skeleton-container animate-pulse-slow" style={{ height: 110, borderRadius: 20, width: '100%' }} />
+        <div className="skeleton-container" style={{ height: 110, borderRadius: 20, width: '100%' }} />
         {/* Statistics Grid Shimmer */}
         <div className="responsive-grid-3" style={{ gap: 8 }}>
-          <div className="skeleton-container animate-pulse-slow" style={{ height: 50, borderRadius: 14 }} />
-          <div className="skeleton-container animate-pulse-slow" style={{ height: 50, borderRadius: 14 }} />
-          <div className="skeleton-container animate-pulse-slow" style={{ height: 50, borderRadius: 14 }} />
+          <div className="skeleton-container" style={{ height: 50, borderRadius: 14 }} />
+          <div className="skeleton-container" style={{ height: 50, borderRadius: 14 }} />
+          <div className="skeleton-container" style={{ height: 50, borderRadius: 14 }} />
         </div>
         {/* Case List Shimmer */}
-        <div className="skeleton-container animate-pulse-slow" style={{ height: 120, borderRadius: 18 }} />
+        <div className="skeleton-container" style={{ height: 120, borderRadius: 18 }} />
         {/* Expert Shimmer */}
-        <div className="skeleton-container animate-pulse-slow" style={{ height: 75, borderRadius: 16 }} />
+        <div className="skeleton-container" style={{ height: 75, borderRadius: 16 }} />
       </div>
     );
   }

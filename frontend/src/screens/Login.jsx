@@ -338,6 +338,15 @@ export default function Login({ onLoginSuccess, addNotification, onCancel }) {
     };
   }, []);
 
+  // Autofocus the first OTP box when verification code is sent
+  useEffect(() => {
+    if (authState === 'OTP_SENT') {
+      setTimeout(() => {
+        otpRefs.current[0]?.focus();
+      }, 50);
+    }
+  }, [authState]);
+
   const resetVerification = () => {
     setMagicLinkSent(false);
     setOtpCode(['', '', '', '', '', '']);

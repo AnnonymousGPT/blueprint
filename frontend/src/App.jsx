@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import './App.css';
+import { Haptics, NotificationType } from '@capacitor/haptics';
 
 // Import Screens
 import Login from './screens/Login';
@@ -310,10 +311,11 @@ export default function App() {
       setTrackingRequestId(newReq.id);
       localStorage.removeItem('app_payment_data');
       setPaymentData(null);
+      Haptics.notification({ type: NotificationType.Success }).catch(() => {});
       setActiveTab('requests'); // Redirect to tracking timeline screen!
     } catch (err) {
       console.error('Failed to process booking', err);
-      addNotification('Failed to process booking on server.', 'error');
+      addNotification(err.message || 'Failed to process booking on server.', 'error');
     }
   };
 
@@ -1127,7 +1129,7 @@ export default function App() {
         </div>
 
         {/* Main interactive screen viewport */}
-        <div className="app-content">
+        <div className={`app-content ${(!showSplash && !forceShowLogin && !activeWizardConfig && !bookingData && !paymentData) ? 'has-bottom-bar' : ''}`}>
           {showSplash ? (
             <Splash onFinish={handleSplashFinish} />
           ) : (forceShowLogin || (paymentData && !user)) ? (

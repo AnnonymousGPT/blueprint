@@ -27,6 +27,27 @@ export default function ChatBox({ currentUserId, otherUserId, otherUserName, onC
       if (navigator.vibrate) navigator.vibrate(30);
     }
   };
+  // Touch refs and gesture handlers for swipe-down to dismiss
+  const touchStartY = useRef(0);
+  const touchCurrentY = useRef(0);
+
+  const handleTouchStart = (e) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchMove = (e) => {
+    touchCurrentY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = () => {
+    const deltaY = touchCurrentY.current - touchStartY.current;
+    if (deltaY > 100) { // Swiped down by more than 100px
+      playHaptic();
+      onClose();
+    }
+    touchStartY.current = 0;
+    touchCurrentY.current = 0;
+  };
 
   // Analytics event tracker
   const trackEvent = (eventName, payload = {}) => {
@@ -178,7 +199,12 @@ export default function ChatBox({ currentUserId, otherUserId, otherUserName, onC
   return (
     <div style={styles.container}>
       {/* Header bar controls */}
-      <div style={styles.header}>
+      <div 
+        style={styles.header}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{
             width: 32,

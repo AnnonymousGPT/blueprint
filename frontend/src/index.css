@@ -53,6 +53,31 @@
   --radius-xl: 32px;
   --radius-full: 9999px;
 
+  /* Typography Scale Tokens */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-xxl: 1.5rem;
+  --font-size-xxxl: 1.875rem;
+
+  /* Font Weights */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+
+  /* Spacing Scale Tokens */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+
   /* Animation */
   --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -221,8 +246,12 @@ button {
   position: relative;
   display: flex;
   flex-direction: column;
-  padding-bottom: var(--bottom-nav-space); /* Nav bar space */
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
   scrollbar-width: none; /* Firefox */
+}
+
+.app-content.has-bottom-bar {
+  padding-bottom: var(--bottom-nav-space);
 }
 
 .app-content::-webkit-scrollbar {
@@ -232,16 +261,18 @@ button {
 /* Shared UI Components */
 .card {
   background-color: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-radius: var(--radius-md);
   padding: 16px;
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-sm);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-normal), border-color var(--transition-normal);
+  transition: transform var(--transition-bounce), box-shadow var(--transition-bounce), background-color var(--transition-normal), border-color var(--transition-normal);
 }
 
 .card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  transform: scale(1.02);
+  box-shadow: var(--shadow-lg);
 }
 
 .title-accent {
@@ -338,6 +369,10 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .login-top-actions {
@@ -392,6 +427,8 @@ button {
   background: linear-gradient(135deg, rgba(244, 249, 255, 0.98) 0%, rgba(232, 242, 255, 0.95) 100%);
   border: 1px solid rgba(var(--primary-rgb), 0.10);
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
+  flex-shrink: 0;
+  margin-top: 4px;
 }
 
 .login-hero-card::after {
@@ -2248,6 +2285,12 @@ button {
 
 .animate-pulse-slow {
   animation: pulse-slow 3s infinite ease-in-out;
+}
+
+.skeleton-container {
+  background: linear-gradient(90deg, var(--bg-surface-variant) 25%, var(--divider) 50%, var(--bg-surface-variant) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
 }
 
 @keyframes shimmer {

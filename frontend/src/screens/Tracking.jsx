@@ -83,6 +83,11 @@ function Icon({ name, size = 18, color = 'currentColor', strokeWidth = 2.2 }) {
   }
 }
 
+function formatMoney(value) {
+  if (value === undefined || value === null) return '₹0';
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+}
+
 export default function Tracking({ requests = [], documents = [], selectedRequestId, onBackToHome, setActiveTab, addNotification, user }) {
   const [manualRequestId, setManualRequestId] = useState(() => {
     return localStorage.getItem('active_workspace_request_id') || null;
@@ -571,7 +576,8 @@ export default function Tracking({ requests = [], documents = [], selectedReques
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      zIndex: 2
+                      zIndex: 2,
+                      transition: 'background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
                     }}>
                       {isCompleted && <span style={{ color: '#fff', fontSize: '0.54rem', fontWeight: 900 }}>✓</span>}
                       {isActive && <div style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#10b981' }} />}
@@ -583,7 +589,8 @@ export default function Tracking({ requests = [], documents = [], selectedReques
                         minHeight: 24,
                         backgroundColor: isCompleted ? '#10b981' : 'var(--border-color)',
                         marginBlock: 2,
-                        zIndex: 1
+                        zIndex: 1,
+                        transition: 'background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
                       }} />
                     )}
                   </div>
